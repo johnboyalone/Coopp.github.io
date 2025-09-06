@@ -1,28 +1,30 @@
 import { initializeApp } from 'firebase/app';
 import { getDatabase, ref, set, get, onValue, update, runTransaction, Unsubscribe } from 'firebase/database';
-import { firebaseConfig } from '../firebaseConfig';
+import { firebaseConfig } from '../../firebaseConfig';
 import { Puzzle, GameRoom, PlayerRole, Theme, GameResult } from '../types';
 import { GAME_DURATION_SECONDS } from '../components/constants';
 
-// Initialize Firebase
 let app;
 let db;
+
+export let isFirebaseConfigured = false;
+
 try {
-  app = initializeApp(firebaseConfig);
-  db = getDatabase(app);
+  if (
+    firebaseConfig &&
+    firebaseConfig.apiKey &&
+    !firebaseConfig.apiKey.includes("AIzaSyDceng5cmITvUqqTuMFSja0y4PSkhFmrmg") && // Placeholder check
+    firebaseConfig.projectId &&
+    !firebaseConfig.projectId.includes("gemini-co-op-game") // Placeholder check
+  ) {
+    app = initializeApp(firebaseConfig);
+    db = getDatabase(app);
+    isFirebaseConfigured = true;
+  }
 } catch (error) {
     console.error("Firebase initialization error:", error);
 }
 
-// Check if the firebase config is valid
-export const isFirebaseConfigured =
-  firebaseConfig &&
-  firebaseConfig.apiKey &&
-  !firebaseConfig.apiKey.includes("YOUR_API_KEY") &&
-  firebaseConfig.projectId &&
-  !firebaseConfig.projectId.includes("YOUR_PROJECT_ID");
-
-// Generate a unique 4-char uppercase room ID
 const generateRoomId = (): string => {
   let id = '';
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -32,8 +34,8 @@ const generateRoomId = (): string => {
   return id;
 };
 
-// Create a new game room in Firebase
 export const createRoom = async (puzzle: Puzzle, hostPlayerId: string, theme: Theme): Promise<string> => {
+  if (!isFirebaseConfigured) throw new Error("Firebase is not configured.");
   const roomId = generateRoomId();
   const roomRef = ref(db, `rooms/${roomId}`);
 
@@ -54,57 +56,43 @@ export const createRoom = async (puzzle: Puzzle, hostPlayerId: string, theme: Th
   return roomId;
 };
 
-// Join an existing game room
 export const joinRoom = async (roomId: string, joiningPlayerId: string): Promise<boolean> => {
+  if (!isFirebaseConfigured) throw new Error("Firebase is not configured.");
   const roomRef = ref(db, `rooms/${roomId}`);
 
   try {
     const result = await runTransaction(roomRef, (currentRoom: GameRoom | null) => {
       if (!currentRoom) {
-        // Room does not exist
-        return; // Abort transaction
+        return; 
       }
-      if (currentRoom.status !== 'waiting') {
-        // Game already started or finished
-        return; // Abort transaction
-      }
-      if (currentRoom.players.B) {
-        // Room is full
-        return; // Abort transaction
+      if (currentRoom.status !== 'waiting' || currentRoom.players.B) {
+        return;
       }
       if (currentRoom.players.A?.playerId === joiningPlayerId) {
-        // Player is already in the room
-        return currentRoom; // Don't abort, just do nothing
+        return currentRoom;
       }
 
-      // Add player B and start the game
       currentRoom.players.B = { playerId: joiningPlayerId };
       currentRoom.status = 'active';
       currentRoom.startTime = Date.now();
       return currentRoom;
     });
 
-    return result.committed && !!result.snapshot.val().players.B;
+    return result.committed && !!result.snapshot.val()?.players.B;
   } catch (error) {
     console.error("Failed to join room transaction:", error);
     return false;
   }
 };
 
-// Function to handle game timeout
-export const endGameOnTimeout = async (roomId: string): Promise<void> => {
+const endGameOnTimeout = async (roomId: string): Promise<void> => {
+    if (!isFirebaseConfigured) return;
     const roomRef = ref(db, `rooms/${roomId}`);
-
     try {
         await runTransaction(roomRef, (currentRoom: GameRoom | null) => {
             if (currentRoom && currentRoom.status === 'active') {
-                const result: GameResult = {
-                    win: false,
-                    timeRemaining: 0,
-                    bondScore: 0,
-                };
                 currentRoom.status = 'finished';
-                currentRoom.result = result;
+                currentRoom.result = { win: false, timeRemaining: 0, bondScore: 0 };
             }
             return currentRoom;
         });
@@ -113,54 +101,45 @@ export const endGameOnTimeout = async (roomId: string): Promise<void> => {
     }
 };
 
-// Listen for updates to a game room
-export const onRoomUpdate = (roomId: string, callback: (room: GameRoom) => void): Unsubscribe => {
+export const onRoomUpdate = (roomId: string, callback: (room: GameRoom | null) => void): Unsubscribe => {
+  if (!isFirebaseConfigured) return () => {};
   const roomRef = ref(db, `rooms/${roomId}`);
   return onValue(roomRef, (snapshot) => {
     if (snapshot.exists()) {
       const roomData = snapshot.val() as GameRoom;
       
-      // Handle automatic timeout
       if (roomData.status === 'active' && roomData.startTime) {
         const elapsed = (Date.now() - roomData.startTime) / 1000;
-        if (elapsed > GAME_DURATION_SECONDS) {
+        if (elapsed > GAME_DURATION_SECONDS + 2) { // Add 2s buffer
           endGameOnTimeout(roomId);
         }
       }
-
       callback(roomData);
+    } else {
+      callback(null);
     }
   });
 };
 
-// Update the solution attempt and check if it's correct
 export const updateSolutionAttempt = async (roomId: string, attempt: string): Promise<void> => {
+    if (!isFirebaseConfigured) return;
     const roomRef = ref(db, `rooms/${roomId}`);
 
     const snapshot = await get(roomRef);
     if (!snapshot.exists()) return;
 
     const room: GameRoom = snapshot.val();
-    if (room.status !== 'active') return;
+    if (room.status !== 'active' || attempt.length > 4) return;
 
-    // Update the attempt value
     await update(roomRef, { solutionAttempt: attempt });
 
-    // Check if the solution is correct
     if (attempt === room.puzzle.solution) {
-        // Solution is correct, end the game as a win
         const endTime = Date.now();
         const timeElapsed = (endTime - (room.startTime ?? endTime)) / 1000;
         const timeRemaining = Math.max(0, Math.floor(GAME_DURATION_SECONDS - timeElapsed));
-        
-        // Simple bond score calculation
-        const bondScore = Math.floor((timeRemaining / GAME_DURATION_SECONDS) * 100) + 10; // Bonus points for winning
+        const bondScore = Math.floor((timeRemaining / GAME_DURATION_SECONDS) * 100) + 10;
 
-        const result: GameResult = {
-            win: true,
-            timeRemaining,
-            bondScore,
-        };
+        const result: GameResult = { win: true, timeRemaining, bondScore };
 
         await update(roomRef, {
             status: 'finished',
