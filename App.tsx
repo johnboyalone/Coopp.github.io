@@ -7,9 +7,8 @@ import GameScreen from './components/GameScreen';
 import EndScreen from './components/EndScreen';
 import LoadingScreen from './components/LoadingScreen';
 import LobbyScreen from './components/LobbyScreen';
-import { nanoid } from 'https://cdn.jsdelivr.net/npm/nanoid/nanoid.js';
+import { nanoid } from 'nanoid';
 
-// Generate or retrieve a persistent player ID
 const getPlayerId = (): string => {
   let playerId = localStorage.getItem('playerId');
   if (!playerId) {
@@ -43,9 +42,16 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
   useEffect(() => {
-    if (!gameRoom || !gameRoom.id) return;
+    if (!gameRoom?.id) return;
 
     const unsubscribe = onRoomUpdate(gameRoom.id, (room) => {
+      if (!room) {
+        setError("ไม่พบห้องเกม อาจถูกลบไปแล้ว");
+        setScreen(Screen.Menu);
+        setIsLoading(false);
+        return;
+      }
+      
       setGameRoom(room);
       if (room.status === 'active' && screen !== Screen.Game) {
         setIsLoading(false);
@@ -66,8 +72,7 @@ const App: React.FC = () => {
       const newPuzzle = await generatePuzzle(theme);
       const roomId = await createRoom(newPuzzle, playerId, theme);
       setPlayerRole(PlayerRole.A);
-      // The listener will set the gameRoom, so we just need to set the screen
-      setGameRoom({ id: roomId } as GameRoom); // Set a temporary room object to trigger listener
+      setGameRoom({ id: roomId } as GameRoom);
       setScreen(Screen.Lobby);
     } catch (err) {
       console.error("Failed to create game:", err);
@@ -83,8 +88,7 @@ const App: React.FC = () => {
       const success = await joinRoom(roomId, playerId);
       if(success) {
         setPlayerRole(PlayerRole.B);
-        setGameRoom({ id: roomId } as GameRoom); // Set a temporary room object to trigger listener
-        // The listener will handle screen transition
+        setGameRoom({ id: roomId } as GameRoom);
       } else {
         throw new Error("Room is full or does not exist.");
       }
@@ -96,14 +100,10 @@ const App: React.FC = () => {
   }, [playerId]);
   
   const handleSolutionAttempt = useCallback((attempt: string) => {
-    if (gameRoom?.id) {
+    if (gameRoom?.id && playerRole === PlayerRole.B) {
         updateSolutionAttempt(gameRoom.id, attempt);
     }
-  }, [gameRoom?.id]);
-
-  const handleGameEnd = useCallback((result: GameResult) => {
-     // This is now handled by Firebase state changes
-  }, []);
+  }, [gameRoom?.id, playerRole]);
 
   const handlePlayAgain = useCallback(() => {
     setScreen(Screen.Menu);
@@ -136,7 +136,6 @@ const App: React.FC = () => {
           <GameScreen 
             gameRoom={gameRoom} 
             playerRole={playerRole} 
-            onGameEnd={handleGameEnd}
             onSolutionChange={handleSolutionAttempt}
           />
         );
