@@ -212,19 +212,64 @@
 
         // Preload assets for all puzzles
         function preload() {
-            this.load.image('background_haunted', 'https://placehold.co/720x1280/1a1a1a/ffffff?text=Haunted+House');
-            this.load.image('background_lab', 'https://placehold.co/720x1280/333344/ffffff?text=Secret+Lab');
-            this.load.image('background_castle', 'https://placehold.co/720x1280/4a3a6b/ffffff?text=Magic+Castle');
+            // Assets now generated within the code
+            const createPlaceholderTexture = (key, text, color) => {
+                const canvas = document.createElement('canvas');
+                canvas.width = 200;
+                canvas.height = 200;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = color;
+                ctx.fillRect(0, 0, 200, 200);
+                ctx.fillStyle = '#ffffff';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.font = '24px Arial';
+                ctx.fillText(text, 100, 100);
+                this.textures.addCanvas(key, canvas);
+            };
 
-            // General assets
-            this.load.image('safe', 'https://placehold.co/200x200/555555/ffffff?text=SAFE');
-            this.load.image('code_pad', 'https://placehold.co/200x200/999999/000000?text=CODE+PAD');
-            this.load.image('vials', 'https://placehold.co/200x200/80ff80/000000?text=Vials');
-            this.load.image('diagram', 'https://placehold.co/200x200/4444ff/ffffff?text=Diagram');
-            this.load.image('runes', 'https://placehold.co/200x200/c080ff/ffffff?text=Runes');
-            this.load.image('magical_door', 'https://placehold.co/200x200/a0a0ff/ffffff?text=Door');
-            this.load.image('lock_icon', 'https://placehold.co/50x50/ff0000/ffffff?text=🔒');
-            this.load.image('unlock_icon', 'https://placehold.co/50x50/00ff00/ffffff?text=🔓');
+            const createBackgroundTexture = (key, text, color) => {
+                const canvas = document.createElement('canvas');
+                canvas.width = 720;
+                canvas.height = 1280;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = color;
+                ctx.fillRect(0, 0, 720, 1280);
+                ctx.fillStyle = '#ffffff';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.font = '48px Arial';
+                ctx.fillText(text, 360, 640);
+                this.textures.addCanvas(key, canvas);
+            };
+
+            createBackgroundTexture('background_บ้านผีสิง', 'Haunted House', '#1a1a1a');
+            createBackgroundTexture('background_ห้องทดลองลับ', 'Secret Lab', '#333344');
+            createBackgroundTexture('background_ปราสาทเวทมนตร์', 'Magic Castle', '#4a3a6b');
+
+            createPlaceholderTexture('safe', 'SAFE', '#555555');
+            createPlaceholderTexture('code_pad', 'CODE PAD', '#999999');
+            createPlaceholderTexture('vials', 'Vials', '#80ff80');
+            createPlaceholderTexture('diagram', 'Diagram', '#4444ff');
+            createPlaceholderTexture('runes', 'Runes', '#c080ff');
+            createPlaceholderTexture('magical_door', 'Door', '#a0a0ff');
+            
+            // Create lock/unlock icons with emojis
+            const createEmojiTexture = (key, emoji) => {
+                const canvas = document.createElement('canvas');
+                canvas.width = 50;
+                canvas.height = 50;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, 50, 50);
+                ctx.font = '40px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(emoji, 25, 25);
+                this.textures.addCanvas(key, canvas);
+            };
+            createEmojiTexture('lock_icon', '🔒');
+            createEmojiTexture('unlock_icon', '🔓');
         }
 
         function create() {
@@ -289,7 +334,7 @@
             // Initial background based on puzzle theme
             const puzzleId = networkManager.gameData.players[networkManager.currentUserId].puzzleId;
             const puzzleTheme = puzzles.find(p => p.id === puzzleId);
-            gameScene.add.image(gameScene.scale.width / 2, gameScene.scale.height / 2, `background_${puzzleTheme.name.toLowerCase().replace(/ /g, '_')}`).setOrigin(0.5);
+            gameScene.add.image(gameScene.scale.width / 2, gameScene.scale.height / 2, `background_${puzzleTheme.name}`).setOrigin(0.5);
 
             // Initial timer display
             timerText = gameScene.add.text(gameScene.scale.width / 2, 120, 'เวลา: 05:00', { fontSize: '48px', color: '#fff' }).setOrigin(0.5);
@@ -389,16 +434,4 @@
                 .setOrigin(0.5)
                 .setInteractive()
                 .on('pointerdown', () => {
-                    phaserGame.destroy(true);
-                    phaserGame = new Phaser.Game(config);
-                });
-        }
-
-        // Initialize the game when the window loads
-        window.onload = function () {
-            phaserGame = new Phaser.Game(config);
-        };
-        // --- End Game Logic ---
-    </script>
-</body>
-</html>
+                    
