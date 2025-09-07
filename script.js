@@ -1,3 +1,4 @@
+// script.js ฉบับแก้ไขสมบูรณ์
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
 import {
@@ -45,6 +46,7 @@ let roomUnsubscribe = null;
 let localRole = null;
 let ownerUid = null;
 let countdownInterval = null;
+let isGameUIShown = false;
 
 function makeRoomId(len = 6){
   const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -103,7 +105,6 @@ createRoomBtn.addEventListener('click', async ()=>{
   const roomId = makeRoomId(6);
   const roomRef = doc(db, 'rooms', roomId);
   const symbols = generateSymbols();
-  const code = mapSymbolsToCode(symbols);
   const initial = {
     createdAt: serverTimestamp(),
     owner: me.uid,
@@ -174,18 +175,24 @@ async function enterRoom(roomId){
     }
     const data = snap.data();
     renderRoomInfo(roomId, data);
+
     if (data.status === 'playing') {
-      const players = data.players || [];
-      const idx = players.findIndex(p => p.uid === me.uid);
-      if (idx === -1) {
-        localRole = 'B';
-      } else {
+      if (!isGameUIShown) {
+        const players = data.players || [];
+        const idx = players.findIndex(p => p.uid === me.uid);
         localRole = (idx === 0) ? 'A' : 'B';
+        ownerUid = data.owner;
+        showGame(data);
+        isGameUIShown = true;
       }
-      ownerUid = data.owner;
-      showGame(data);
-    } else {
-      showLobbyRoomView();
+      updateGameState(data);
+    } else if (data.status === 'waiting' || data.status === 'finished') {
+      if (isGameUIShown) {
+        showLobbyRoomView();
+      }
+      if (data.status === 'finished') {
+        updateGameState(data);
+      }
     }
   });
 
@@ -201,7 +208,7 @@ function renderRoomInfo(roomId, data){
     li.textContent = p.name + (p.uid === data.owner ? ' (เจ้าของห้อง)' : '');
     playersList.appendChild(li);
   });
-  if (me && me.uid === data.owner && (data.players || []).length >= 2) {
+  if (me && me.uid === data.owner && (data.players || []).length >= 2 && data.status === 'waiting') {
     startGameBtn.classList.remove('hidden');
     ownerHint.textContent = 'คุณเป็นเจ้าของห้อง — กด "เริ่มเกม" เมื่อพร้อม';
   } else {
@@ -211,6 +218,9 @@ function renderRoomInfo(roomId, data){
 }
 
 function showLobbyRoomView(){
+  isGameUIShown = false;
+  clearInterval(countdownInterval);
+  countdownInterval = null;
   mainLobby.querySelector('#lobby .card')?.classList.remove('hidden');
   roomInfo.classList.remove('hidden');
   sectionGame.classList.add('hidden');
@@ -222,20 +232,24 @@ function showLobby(){
   currentRoomId = null;
   roomInfo.classList.add('hidden');
   startGameBtn.classList.add('hidden');
-  mainLobby.querySelector('#lobby .card')?.classList.remove('hidden');
-  sectionGame.classList.add('hidden');
+  showLobbyRoomView();
 }
 
 async function cleanupRoom(){
   if (!currentRoomId) return;
   const ref = doc(db, 'rooms', currentRoomId);
-  try { await updateDoc(ref, { players: arrayRemove({ uid: me.uid, name: me.name }) }); } catch (e) {}
+  try {
+    if (me && me.name) {
+      await updateDoc(ref, { players: arrayRemove({ uid: me.uid, name: me.name }) });
+    }
+  } catch (e) {}
   if (roomUnsubscribe) { roomUnsubscribe(); roomUnsubscribe = null; }
   currentRoomId = null;
   localRole = null;
   ownerUid = null;
   clearInterval(countdownInterval);
   countdownInterval = null;
+  isGameUIShown = false;
 }
 
 function showGame(roomData){
@@ -246,30 +260,50 @@ function showGame(roomData){
   roleTitle.textContent = (localRole === 'A') ? 'บทบาท: ผู้เล่น A (เห็นสัญลักษณ์)' : 'บทบาท: ผู้เล่น B (เห็นตู้เซฟ)';
 
   renderGameUI(roomData);
-  if (me.uid === roomData.owner && roomData.status === 'playing' && !countdownInterval) {
+
+  if (me.uid === roomData.owner && !countdownInterval) {
     countdownInterval = setInterval(async ()=>{
       const roomRef = doc(db, 'rooms', currentRoomId);
       const snap = await getDoc(roomRef);
       if (!snap.exists()) { clearInterval(countdownInterval); return; }
       const r = snap.data();
-      if (!r.state) return;
-      if (r.state.solved || r.state.timeLeft <= 0) {
+      if (!r.state || r.state.solved || r.state.timeLeft <= 0 || r.status !== 'playing') {
         clearInterval(countdownInterval);
+        countdownInterval = null;
+        if (r.state.timeLeft <= 0 && r.status === 'playing') {
+          await updateDoc(roomRef, { status: 'finished' });
+        }
         return;
       }
       const newTime = (r.state.timeLeft || 0) - 1;
       await updateDoc(roomRef, { 'state.timeLeft': newTime });
-      if (newTime <= 0) {
-        await updateDoc(roomRef, { status: 'finished' });
-      }
     }, 1000);
   }
+}
+
+function updateGameState(roomData) {
+    const state = roomData.state || {};
+    timerText.textContent = 'เวลา: ' + formatTime(state.timeLeft || 0);
+
+    if (roomData.status === 'finished') {
+        gameArea.querySelectorAll('button').forEach(b => b.disabled = true);
+        const summary = document.createElement('p');
+        if (state.solved) {
+            summary.textContent = 'จบเกม: ยินดีด้วย! คุณเปิดตู้เซฟสำเร็จ!';
+            summary.style.color = '#7dd3fc';
+        } else {
+            summary.textContent = 'จบเกม: หมดเวลา!';
+            summary.style.color = '#fc7d7d';
+        }
+        if (!document.querySelector('#gameArea p')) {
+            gameArea.appendChild(summary);
+        }
+    }
 }
 
 function renderGameUI(roomData){
   gameArea.innerHTML = '';
   const state = roomData.state || {};
-  timerText.textContent = 'เวลา: ' + formatTime(state.timeLeft || 0);
 
   if (localRole === 'A') {
     const symbolsDiv = document.createElement('div');
@@ -278,20 +312,21 @@ function renderGameUI(roomData){
     gameArea.appendChild(symbolsDiv);
 
     const info = document.createElement('p');
-    info.textContent = 'หน้าที่: ส่งคำใบ้ให้ผู้เล่น B โดยการกดปุ่มเพื่อสร้างรหัส (ระบบจะเก็บรหัสและซิงค์ไปยังห้อง)';
+    info.textContent = 'หน้าที่: สื่อสารสัญลักษณ์เหล่านี้ให้ผู้เล่น B เพื่อให้เขาถอดรหัส';
     info.className = 'muted';
     gameArea.appendChild(info);
 
     const createBtn = document.createElement('button');
-    createBtn.textContent = state.code ? 'รหัสถูกสร้างแล้ว' : 'ส่งคำใบ้ (สร้างรหัส)';
+    createBtn.textContent = state.code ? 'ส่งคำใบ้แล้ว' : 'ส่งคำใบ้ (สร้างรหัสลับ)';
     createBtn.disabled = !!state.code;
     createBtn.addEventListener('click', async ()=>{
-      if (!currentRoomId) return;
-      if (state.code) return alert('รหัสถูกสร้างแล้ว');
+      if (!currentRoomId || state.code) return;
       const code = mapSymbolsToCode(state.symbolsA || []);
       const roomRef = doc(db, 'rooms', currentRoomId);
       await updateDoc(roomRef, { 'state.code': code });
-      hintText.textContent = 'ส่งคำใบ้ให้ผู้เล่น B ทางเสียง/ข้อความจริง ๆ (ตัวเกมจะซิงค์รหัสไว้)';
+      hintText.textContent = 'ระบบได้สร้างรหัสลับแล้ว! สื่อสารกับเพื่อนของคุณได้เลย';
+      createBtn.textContent = 'ส่งคำใบ้แล้ว';
+      createBtn.disabled = true;
       setTimeout(()=>hintText.textContent = '', 3500);
     });
     gameArea.appendChild(createBtn);
@@ -299,14 +334,18 @@ function renderGameUI(roomData){
   } else {
     const safeText = document.createElement('div');
     safeText.style.fontSize = '18px';
-    safeText.textContent = state.solved ? 'ตู้เซฟ: ถูกเปิดแล้ว 🎉' : 'ตู้เซฟ: รอรหัสจากผู้เล่น A';
+    safeText.textContent = 'ตู้เซฟ: ป้อนรหัส 4 หลัก';
     gameArea.appendChild(safeText);
 
     const buffer = document.createElement('div');
     buffer.id = 'inputBuffer';
     buffer.style.fontSize = '22px';
     buffer.style.marginTop = '8px';
-    buffer.textContent = '';
+    buffer.style.border = '1px solid #9fb4c9';
+    buffer.style.padding = '8px 12px';
+    buffer.style.minWidth = '100px';
+    buffer.style.textAlign = 'center';
+    buffer.textContent = '----';
     gameArea.appendChild(buffer);
 
     const keypad = document.createElement('div');
@@ -314,32 +353,21 @@ function renderGameUI(roomData){
     keypad.style.gridTemplateColumns = 'repeat(3, 60px)';
     keypad.style.gap = '8px';
     keypad.style.marginTop = '12px';
-    for (let i=1;i<=9;i++){
-      const btn = document.createElement('button');
-      btn.textContent = i;
-      btn.addEventListener('click', ()=>onKeyPress(i.toString()));
-      keypad.appendChild(btn);
-    }
-    const zeroBtn = document.createElement('button');
-    zeroBtn.textContent = '0';
-    zeroBtn.addEventListener('click', ()=>onKeyPress('0'));
-    const enterBtn = document.createElement('button');
-    enterBtn.textContent = 'ยืนยัน';
-    enterBtn.addEventListener('click', tryOpen);
-    keypad.appendChild(zeroBtn);
-    keypad.appendChild(enterBtn);
-
-    gameArea.appendChild(keypad);
 
     let inputBuf = '';
-    function onKeyPress(ch){
+
+    const onKeyPress = (ch) => {
       if (inputBuf.length >= 4) return;
       inputBuf += ch;
-      buffer.textContent = inputBuf;
-    }
-    async function tryOpen(){
-      if (!currentRoomId) return;
-      if (!state.code) {
+      buffer.textContent = inputBuf.padEnd(4, '-');
+    };
+
+    const tryOpen = async () => {
+      const roomRef = doc(db, 'rooms', currentRoomId);
+      const currentSnap = await getDoc(roomRef);
+      const currentState = currentSnap.data().state;
+
+      if (!currentState.code) {
         hintText.textContent = 'ยังไม่มีรหัส — รอผู้เล่น A สร้างรหัส';
         setTimeout(()=>hintText.textContent = '', 3000);
         return;
@@ -349,28 +377,48 @@ function renderGameUI(roomData){
         setTimeout(()=>hintText.textContent = '', 2000);
         return;
       }
-      if (inputBuf === state.code) {
-        const roomRef = doc(db, 'rooms', currentRoomId);
+      if (inputBuf === currentState.code) {
         await updateDoc(roomRef, { 'state.solved': true, 'status': 'finished' });
-        hintText.textContent = 'ยินดีด้วย! ตู้เซฟถูกเปิดแล้ว 🎉';
+        safeText.textContent = 'ตู้เซฟ: ถูกเปิดแล้ว 🎉';
       } else {
         hintText.textContent = 'รหัสไม่ถูกต้อง ลองอีกครั้ง';
+        inputBuf = '';
+        buffer.textContent = '----';
         setTimeout(()=>hintText.textContent = '', 2000);
       }
-      inputBuf = '';
-      buffer.textContent = '';
-    }
-  }
+    };
 
-  if (roomData.status === 'finished') {
-    const summary = document.createElement('p');
-    summary.textContent = 'จบเกม — ปิดด่านแล้ว คุณสามารถกลับไปลอบบี้เพื่อเล่นใหม่';
-    gameArea.appendChild(summary);
+    for (let i=1;i<=9;i++){
+      const btn = document.createElement('button');
+      btn.textContent = i;
+      btn.addEventListener('click', ()=>onKeyPress(i.toString()));
+      keypad.appendChild(btn);
+    }
+    const clearBtn = document.createElement('button');
+    clearBtn.textContent = 'C';
+    clearBtn.addEventListener('click', () => {
+        inputBuf = '';
+        buffer.textContent = '----';
+    });
+    const zeroBtn = document.createElement('button');
+    zeroBtn.textContent = '0';
+    zeroBtn.addEventListener('click', ()=>onKeyPress('0'));
+    const enterBtn = document.createElement('button');
+    enterBtn.textContent = 'ยืนยัน';
+    enterBtn.style.gridColumn = 'span 3';
+    enterBtn.addEventListener('click', tryOpen);
+
+    keypad.appendChild(clearBtn);
+    keypad.appendChild(zeroBtn);
+    keypad.appendChild(enterBtn);
+
+    gameArea.appendChild(keypad);
   }
 }
 
 function formatTime(sec){
   sec = Number(sec || 0);
+  if (sec < 0) sec = 0;
   const m = Math.floor(sec/60).toString().padStart(2,'0');
   const s = (sec%60).toString().padStart(2,'0');
   return `${m}:${s}`;
@@ -378,7 +426,6 @@ function formatTime(sec){
 
 window.addEventListener('beforeunload', async ()=>{
   if (currentRoomId && me) {
-    const ref = doc(db, 'rooms', currentRoomId);
-    try { await updateDoc(ref, { players: arrayRemove({ uid: me.uid, name: me.name }) }); } catch (e) {}
+    cleanupRoom();
   }
 });
