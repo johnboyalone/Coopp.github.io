@@ -1,4 +1,4 @@
-// Defuse Duo - script.js (Wire Cutting Version)
+// Defuse Duo - script.js (Esoteric Symbols Version)
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
 import {
@@ -67,12 +67,11 @@ function shuffleArray(array) {
 }
 
 function generateBombPuzzle(){
-  const pool = ['◎','★','◆','♠','♥','☘','☼','✿','☯','♫','✦','⚑'];
+  // NEW ESOTERIC SYMBOLS
+  const pool = ['⍰','↟','⍼','⟐','⨳','⩻','⪢','⟁','⍬','⦚','⟓','⨇'];
   const selectedSymbols = shuffleArray([...pool]).slice(0, 4);
   
-  // wiresOnBomb คือลำดับที่แสดงบนหน้าจอของ Field Agent (สลับมั่ว)
   const wiresOnBomb = shuffleArray([...selectedSymbols]);
-  // defuseOrder คือลำดับการตัดที่ถูกต้อง (มาจาก selectedSymbols ที่ยังไม่สลับรอบสอง)
   const defuseOrder = selectedSymbols;
 
   return { wiresOnBomb, defuseOrder };
@@ -117,11 +116,11 @@ createRoomBtn.addEventListener('click', async ()=>{
     players: [{ uid: me.uid, name: me.name }],
     status: 'waiting',
     state: {
-      wiresOnBomb: puzzle.wiresOnBomb,     // สำหรับ Field Agent
-      defuseOrder: puzzle.defuseOrder,     // สำหรับ Tech Expert
-      wiresCut: [],                        // สายที่ตัดไปแล้ว
+      wiresOnBomb: puzzle.wiresOnBomb,
+      defuseOrder: puzzle.defuseOrder,
+      wiresCut: [],
       defused: false,
-      timeLeft: 180 // ลดเวลาลงเพื่อเพิ่มความตื่นเต้น
+      timeLeft: 180
     }
   };
   await setDoc(roomRef, initial);
@@ -186,14 +185,13 @@ async function enterRoom(roomId){
 
     if (data.status === 'playing') {
       if (!isGameUIShown) {
-        // Player A (creator) is Tech Expert, Player B (joiner) is Field Agent
         localRole = (data.owner === me.uid) ? 'Tech Expert' : 'Field Agent';
         ownerUid = data.owner;
         showGame(data);
         isGameUIShown = true;
       }
       updateGameState(data);
-    } else if (data.status === 'waiting' || data.status === 'finished') {
+    } else if (data.status === 'finished') {
       if (isGameUIShown) {
         showFinishedScreen(data);
       }
@@ -295,7 +293,6 @@ function updateGameState(roomData) {
         timerText.classList.remove('timer-critical');
     }
 
-    // อัปเดตสถานะสายไฟสำหรับ Field Agent
     if (localRole === 'Field Agent') {
         const wires = document.querySelectorAll('.wire');
         wires.forEach(wireEl => {
@@ -321,7 +318,7 @@ function renderGameUI(roomData){
     manualList.className = 'manual-list';
     (state.defuseOrder || []).forEach((symbol, index) => {
         const li = document.createElement('li');
-        li.innerHTML = `ลำดับที่ ${index + 1}: <strong>${symbol}</strong>`;
+        li.innerHTML = `ลำดับที่ ${index + 1}: <strong style="font-family: 'Segoe UI Symbol', sans-serif;">${symbol}</strong>`;
         manualList.appendChild(li);
     });
     gameArea.appendChild(manualList);
@@ -338,8 +335,9 @@ function renderGameUI(roomData){
     (state.wiresOnBomb || []).forEach(symbol => {
         const wireEl = document.createElement('div');
         wireEl.className = 'wire';
+        wireEl.style.fontFamily = "'Segoe UI Symbol', sans-serif";
         wireEl.textContent = symbol;
-        wireEl.dataset.symbol = symbol; // เก็บสัญลักษณ์ไว้ใน data attribute
+        wireEl.dataset.symbol = symbol;
 
         wireEl.addEventListener('click', async () => {
             const roomRef = doc(db, 'rooms', currentRoomId);
@@ -347,22 +345,18 @@ function renderGameUI(roomData){
             const currentData = currentSnap.data();
             const currentState = currentData.state;
 
-            // ป้องกันการกดซ้ำ หรือกดหลังเกมจบ
             if (currentState.wiresCut.includes(symbol) || currentData.status === 'finished') return;
 
             const nextWireToCut = currentState.defuseOrder[currentState.wiresCut.length];
 
             if (symbol === nextWireToCut) {
-                // ตัดถูกเส้น
                 const newWiresCut = [...currentState.wiresCut, symbol];
                 if (newWiresCut.length === 4) {
-                    // ตัดครบ 4 เส้น -> ชนะ
                     await updateDoc(roomRef, { 'state.wiresCut': newWiresCut, 'state.defused': true, status: 'finished' });
                 } else {
                     await updateDoc(roomRef, { 'state.wiresCut': newWiresCut });
                 }
             } else {
-                // ตัดผิดเส้น -> แพ้ทันที
                 await updateDoc(roomRef, { status: 'finished', 'state.defused': false });
             }
         });
@@ -390,11 +384,12 @@ function showFinishedScreen(roomData) {
     summary.appendChild(title);
 
     const report = document.createElement('p');
-    report.innerHTML = `ลำดับการตัดที่ถูกต้องคือ: <strong style="color: var(--warning);">${state.defuseOrder.join(' → ')}</strong>`;
+    report.innerHTML = `ลำดับการตัดที่ถูกต้องคือ: <strong style="color: var(--warning); font-family: 'Segoe UI Symbol', sans-serif;">${state.defuseOrder.join(' → ')}</strong>`;
     summary.appendChild(report);
 
     gameArea.appendChild(summary);
     document.querySelectorAll('#game button').forEach(b => b.disabled = true);
+    backToLobbyBtn.disabled = false;
 }
 
 
