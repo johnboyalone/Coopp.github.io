@@ -1,77 +1,283 @@
+/* =================================================================
+// Defuse Duo - style.css (Complete & Final Version)
+// ================================================================= */
+
 :root{
-  --bg:#1a1a1a;
-  --card:#2a2a2a;
-  --text:#e6eef8;
-  --muted:#9fb4c9;
-  --accent:#34d399; /* Green */
-  --danger: #ef4444; /* Red */
-  --warning: #f59e0b; /* Yellow */
-  --info: #3b82f6; /* Blue */
+  --bg: #0f172a; /* Darker Slate */
+  --card: #1e293b; /* Slate */
+  --text: #e2e8f0; /* Lighter Slate */
+  --muted: #94a3b8; /* Muted Slate */
+  --accent: #38bdf8; /* Sky Blue */
+  --danger: #f43f5e; /* Rose Red */
 }
+
 *{box-sizing:border-box}
-html,body{height:100%;margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,"Noto Sans Thai",sans-serif;background:var(--bg);color:var(--text)}
-#app{max-width:980px;margin:0 auto;padding:12px}
-header{margin-bottom:12px; text-align: center;}
-h1{font-size:24px;margin:6px 0; color: var(--accent);}
-.muted{color:var(--muted);font-size:13px}
-.card{background:var(--card);padding:14px;border-radius:12px; border: 1px solid rgba(255,255,255,0.1);}
-label{font-size:13px;color:var(--muted);display:block;margin-bottom:6px}
-input[type="text"], input, select{width:100%;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.2);color:var(--text);font-size:15px}
-button{padding:10px;border-radius:8px;border:0;background:var(--accent);color:#002;cursor:pointer;font-weight:600}
-button:disabled { background: #555; color: #999; cursor: not-allowed; }
+
+html,body{
+  height:100%;
+  margin:0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans Thai", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+#app{
+  max-width: 500px; /* Optimized for mobile-first view */
+  margin:0 auto;
+  padding:12px;
+}
+
+header{
+  margin-bottom:12px;
+  text-align: center;
+}
+
+h1{
+  font-size:28px;
+  margin:6px 0;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.muted{
+  color:var(--muted);
+  font-size:14px;
+}
+
+.card{
+  background: var(--card);
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid #334155;
+}
+
+label{
+  font-size:13px;
+  color:var(--muted);
+  display:block;
+  margin-bottom:6px;
+}
+
+input[type="text"], input, select{
+  width:100%;
+  padding:12px;
+  border-radius:8px;
+  border: 1px solid #475569;
+  background: #0f172a;
+  color:var(--text);
+  font-size:16px;
+}
+input::placeholder {
+  color: #64748b;
+}
+
+button{
+  padding: 12px;
+  border-radius: 8px;
+  border: 0;
+  background: var(--accent);
+  color: #002;
+  cursor: pointer;
+  font-weight: 600;
+  transition: background-color 0.2s, transform 0.1s;
+}
+button:hover {
+  background: #a5f3fc; /* Lighter accent */
+}
+button:active {
+  transform: scale(0.97);
+}
+button:disabled {
+  background: #374151; /* Gray */
+  color: #9ca3af;
+  cursor: not-allowed;
+}
+
 .row{display:flex;gap:8px;margin-top:10px}
 .row button{flex:1}
 .hidden{display:none}
 #playersList{margin:6px 0 0;padding-left:18px}
-#gameArea{min-height:300px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px}
+
+/* --- Game Area Specific --- */
+#gameArea{
+  min-height:260px;
+  display:flex;
+  flex-direction:column;
+  align-items: center; /* Center align all puzzle content */
+  gap:16px;
+  padding: 10px 0;
+  width: 100%;
+}
 #timerText{font-weight:700; font-size: 18px;}
 .timer-critical { color: var(--danger); animation: pulse 1s infinite; }
-.hint{color:#a7f3d0}
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+
+.hint{color:#c7ffd8}
 #gameFooter{margin-top:12px;display:flex;justify-content:space-between;align-items:center;gap:10px}
 
 /* --- Stage Indicator --- */
-.stage-indicator { display: flex; gap: 8px; margin-bottom: 16px; }
-.stage-dot { width: 12px; height: 12px; border-radius: 50%; background: #555; }
-.stage-dot.active { background: var(--warning); }
-.stage-dot.completed { background: var(--accent); }
+.stage-indicator {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.stage-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background-color: #374151; /* Inactive */
+  transition: background-color 0.3s;
+}
+.stage-dot.completed {
+  background-color: #4ade80; /* Green */
+}
+.stage-dot.active {
+  background-color: var(--accent);
+  transform: scale(1.2);
+}
 
-/* --- Wire styles (Upgraded) --- */
-.wire-container { display: flex; flex-direction: column; gap: 16px; width: 80%; }
-.wire { background: #555; border-radius: 8px; padding: 12px; font-size: 24px; text-align: center; cursor: pointer; border: 3px solid #777; transition: all 0.2s ease; display: flex; justify-content: center; align-items: center; gap: 15px; }
-.wire:hover { background: #666; }
-.wire.cut { background: var(--danger); border-color: var(--danger); text-decoration: line-through; cursor: not-allowed; opacity: 0.5; }
-.wire-color-indicator { width: 20px; height: 20px; border-radius: 50%; }
-.wire-color-red { background-color: var(--danger); }
-.wire-color-blue { background-color: var(--info); }
-.wire-color-yellow { background-color: var(--warning); }
+/* --- Manuals (Tech Expert) --- */
+.manual-list {
+  text-align: left;
+  padding-left: 20px;
+  width: 100%;
+  max-width: 400px;
+}
+.manual-list li, .manual-list p, .manual-list ul {
+  margin-bottom: 10px;
+}
+.sub-rule {
+  font-size: 0.9em;
+  color: var(--muted);
+  padding-left: 10px;
+}
 
-/* --- Manual styles --- */
-.manual-list { list-style-type: decimal; padding-left: 20px; width: 90%; }
-.manual-list li { background: rgba(0,0,0,0.2); margin-bottom: 8px; padding: 10px; border-radius: 6px; }
-.manual-list li strong { color: var(--warning); font-family: 'Segoe UI Symbol', sans-serif; }
-.manual-list .sub-rule { margin-left: 15px; color: var(--accent); }
+/* --- Stage 1: Wires --- */
+.wire-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  max-width: 300px;
+}
+.wire {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  background: #1f2937;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: border-color 0.2s, background-color 0.2s;
+}
+.wire:hover {
+  border-color: var(--accent);
+}
+.wire span { font-size: 24px; }
+.wire-color-indicator {
+  width: 50px;
+  height: 20px;
+  border-radius: 4px;
+  border: 1px solid rgba(0,0,0,0.2);
+}
+.wire-color-red { background-color: #ef4444; }
+.wire-color-blue { background-color: #3b82f6; }
+.wire-color-yellow { background-color: #eab308; }
 
-/* --- Frequency Tuner --- */
-.tuner-container { display: flex; align-items: center; gap: 16px; }
-.tuner-display { font-size: 36px; font-family: monospace; color: var(--warning); background: #000; padding: 8px 16px; border-radius: 6px; }
-.tuner-btn { font-size: 24px; width: 50px; height: 50px; }
+/* --- Stage 2: Reactor --- */
+.reactor-display-container {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  width: 100%;
+}
+.reactor-display {
+  background: #000;
+  border: 2px solid #4b5563;
+  border-radius: 8px;
+  padding: 10px 20px;
+  text-align: center;
+  width: 80px;
+}
+.reactor-display span { color: var(--muted); font-size: 14px; }
+.reactor-display strong { display: block; font-size: 28px; color: #4ade80; font-family: 'Courier New', Courier, monospace; }
+.reactor-controls {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+.reactor-controls button {
+  min-width: 60px;
+}
+#confirmCalibrationBtn {
+  background-color: #16a34a; /* Green for SET */
+}
+#confirmCalibrationBtn:disabled {
+  background-color: #374151;
+}
 
-/* --- Password Grid --- */
-.password-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; width: 250px; }
-.grid-cell { width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.2); font-size: 20px; font-family: monospace; }
-.grid-cell.highlight { background: var(--warning); color: #000; }
-.password-input-area { margin-top: 16px; display: flex; gap: 8px; }
+/* --- Stage 3: Password Grid --- */
+.password-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 5px;
+  width: 100%;
+  max-width: 250px;
+}
+.grid-cell {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #1f2937;
+  border-radius: 4px;
+  font-size: 18px;
+  font-weight: bold;
+}
+.grid-cell.highlight {
+  background: var(--accent);
+  color: #002;
+}
+.password-input-area {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  max-width: 300px;
+}
+.password-input-area input {
+  text-transform: uppercase;
+}
 
-/* --- Logic Grid (Stage 4) --- */
-.logic-grid-container { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
-.logic-btn { width: 100px; height: 100px; border-radius: 12px; border: 3px solid rgba(255,255,255,0.3); cursor: pointer; transition: transform 0.1s ease; }
-.logic-btn:active { transform: scale(0.95); }
-.logic-btn.red { background-color: #c44; }
-.logic-btn.blue { background-color: #44c; }
-.logic-btn.green { background-color: #4c4; }
-.logic-btn.yellow { background-color: #cc4; }
-.logic-btn.flash { animation: flash-anim 0.4s ease; }
-@keyframes flash-anim { 50% { filter: brightness(2.5); } }
+/* --- Stage 4: Logic Grid --- */
+.logic-grid-container {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 15px;
+  width: 100%;
+  max-width: 250px;
+}
+.logic-btn {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 12px;
+  border: 3px solid rgba(255,255,255,0.3);
+  transition: transform 0.1s, box-shadow 0.2s;
+  cursor: pointer;
+}
+.logic-btn.red { background-color: #ef4444; }
+.logic-btn.blue { background-color: #3b82f6; }
+.logic-btn.green { background-color: #22c55e; }
+.logic-btn.yellow { background-color: #eab308; }
+.logic-btn.flash {
+  transform: scale(1.1);
+  box-shadow: 0 0 25px #fff;
+}
 
-@keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
-@media(min-width:700px){ h1{font-size:28px} #gameArea{min-height:320px} }
+/* --- Responsive --- */
+@media(min-width:700px){
+  h1{font-size:28px}
+  #gameArea{min-height:320px}
+}
