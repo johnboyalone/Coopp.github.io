@@ -1,4 +1,4 @@
-// script.js ฉบับแก้ไขสมบูรณ์
+// script.js ฉบับแก้ไขล่าสุด
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
 import {
@@ -18,6 +18,7 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
+// --- UI Refs ---
 const createRoomBtn = document.getElementById('createRoomBtn');
 const joinRoomBtn = document.getElementById('joinRoomBtn');
 const joinArea = document.getElementById('joinArea');
@@ -40,6 +41,7 @@ const timerText = document.getElementById('timerText');
 const hintText = document.getElementById('hintText');
 const backToLobbyBtn = document.getElementById('backToLobbyBtn');
 
+// --- Game State ---
 let me = null;
 let currentRoomId = null;
 let roomUnsubscribe = null;
@@ -48,6 +50,7 @@ let ownerUid = null;
 let countdownInterval = null;
 let isGameUIShown = false;
 
+// --- Helper Functions ---
 function makeRoomId(len = 6){
   const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
   let out = '';
@@ -73,6 +76,7 @@ function mapSymbolsToCode(symbols){
   return code.padEnd(4,'0').substr(0,4);
 }
 
+// --- Auth Handling ---
 createRoomBtn.disabled = true;
 createRoomBtn.textContent = 'กำลังเชื่อมต่อ...';
 joinRoomBtn.disabled = true;
@@ -99,6 +103,7 @@ onAuthStateChanged(auth, (user) => {
   }
 });
 
+// --- Lobby Event Listeners ---
 createRoomBtn.addEventListener('click', async ()=>{
   if (!me) return alert('ยังไม่เชื่อมต่อ Firebase (รอสักครู่แล้วลองใหม่)');
   me.name = displayNameInput.value || ('ผู้เล่น-' + me.uid.slice(0,4));
@@ -162,6 +167,7 @@ backToLobbyBtn.addEventListener('click', ()=>{
   }
 });
 
+// --- Room & Game Logic ---
 async function enterRoom(roomId){
   currentRoomId = roomId;
   const ref = doc(db, 'rooms', roomId);
@@ -188,10 +194,11 @@ async function enterRoom(roomId){
       updateGameState(data);
     } else if (data.status === 'waiting' || data.status === 'finished') {
       if (isGameUIShown) {
-        showLobbyRoomView();
-      }
-      if (data.status === 'finished') {
-        updateGameState(data);
+        if (data.status === 'finished') {
+          showFinishedScreen(data);
+        } else {
+          showLobbyRoomView();
+        }
       }
     }
   });
@@ -284,21 +291,6 @@ function showGame(roomData){
 function updateGameState(roomData) {
     const state = roomData.state || {};
     timerText.textContent = 'เวลา: ' + formatTime(state.timeLeft || 0);
-
-    if (roomData.status === 'finished') {
-        gameArea.querySelectorAll('button').forEach(b => b.disabled = true);
-        const summary = document.createElement('p');
-        if (state.solved) {
-            summary.textContent = 'จบเกม: ยินดีด้วย! คุณเปิดตู้เซฟสำเร็จ!';
-            summary.style.color = '#7dd3fc';
-        } else {
-            summary.textContent = 'จบเกม: หมดเวลา!';
-            summary.style.color = '#fc7d7d';
-        }
-        if (!document.querySelector('#gameArea p')) {
-            gameArea.appendChild(summary);
-        }
-    }
 }
 
 function renderGameUI(roomData){
@@ -315,6 +307,11 @@ function renderGameUI(roomData){
     info.textContent = 'หน้าที่: สื่อสารสัญลักษณ์เหล่านี้ให้ผู้เล่น B เพื่อให้เขาถอดรหัส';
     info.className = 'muted';
     gameArea.appendChild(info);
+
+    const hint = document.createElement('p');
+    hint.innerHTML = '<b>คำใบ้:</b> รหัสลับคือ <span style="color: #7dd3fc;">เลขตัวสุดท้าย</span> ของ Code Point แต่ละตัว';
+    hint.className = 'muted';
+    gameArea.appendChild(hint);
 
     const createBtn = document.createElement('button');
     createBtn.textContent = state.code ? 'ส่งคำใบ้แล้ว' : 'ส่งคำใบ้ (สร้างรหัสลับ)';
@@ -336,6 +333,11 @@ function renderGameUI(roomData){
     safeText.style.fontSize = '18px';
     safeText.textContent = 'ตู้เซฟ: ป้อนรหัส 4 หลัก';
     gameArea.appendChild(safeText);
+
+    const hint = document.createElement('p');
+    hint.innerHTML = '<b>คำใบ้:</b> รหัส 4 หลักมาจาก <span style="color: #7dd3fc;">สัญลักษณ์</span> ที่เพื่อนของคุณเห็น';
+    hint.className = 'muted';
+    gameArea.appendChild(hint);
 
     const buffer = document.createElement('div');
     buffer.id = 'inputBuffer';
@@ -365,21 +367,24 @@ function renderGameUI(roomData){
     const tryOpen = async () => {
       const roomRef = doc(db, 'rooms', currentRoomId);
       const currentSnap = await getDoc(roomRef);
-      const currentState = currentSnap.data().state;
+      const currentData = currentSnap.data();
+      const currentState = currentData.state;
 
       if (!currentState.code) {
-        hintText.textContent = 'ยังไม่มีรหัส — รอผู้เล่น A สร้างรหัส';
-        setTimeout(()=>hintText.textContent = '', 3000);
-        return;
+        const generatedCode = mapSymbolsToCode(currentState.symbolsA);
+        await updateDoc(roomRef, { 'state.code': generatedCode });
       }
+
+      const finalSnap = await getDoc(roomRef);
+      const finalData = finalSnap.data();
+
       if (inputBuf.length < 4) {
         hintText.textContent = 'กรอกรหัส 4 หลักก่อน';
         setTimeout(()=>hintText.textContent = '', 2000);
         return;
       }
-      if (inputBuf === currentState.code) {
+      if (inputBuf === finalData.state.code) {
         await updateDoc(roomRef, { 'state.solved': true, 'status': 'finished' });
-        safeText.textContent = 'ตู้เซฟ: ถูกเปิดแล้ว 🎉';
       } else {
         hintText.textContent = 'รหัสไม่ถูกต้อง ลองอีกครั้ง';
         inputBuf = '';
@@ -415,6 +420,57 @@ function renderGameUI(roomData){
     gameArea.appendChild(keypad);
   }
 }
+
+function showFinishedScreen(roomData) {
+    gameArea.innerHTML = '';
+    const state = roomData.state;
+    const correctCode = mapSymbolsToCode(state.symbolsA);
+
+    const summary = document.createElement('div');
+    summary.style.textAlign = 'center';
+
+    const title = document.createElement('h3');
+    if (state.solved) {
+        title.textContent = '🎉 ยินดีด้วย! เปิดตู้เซฟสำเร็จ! 🎉';
+        title.style.color = '#7dd3fc';
+    } else {
+        title.textContent = '⌛ หมดเวลา! ⌛';
+        title.style.color = '#fc7d7d';
+    }
+    summary.appendChild(title);
+
+    const solution = document.createElement('p');
+    solution.innerHTML = `รหัสที่ถูกต้องคือ: <strong style="font-size: 20px; color: #7dd3fc;">${correctCode}</strong>`;
+    summary.appendChild(solution);
+
+    const explanationTitle = document.createElement('p');
+    explanationTitle.textContent = 'ที่มาของรหัส:';
+    explanationTitle.style.marginTop = '20px';
+    summary.appendChild(explanationTitle);
+
+    const explanationBox = document.createElement('div');
+    explanationBox.style.background = 'rgba(0,0,0,0.2)';
+    explanationBox.style.padding = '10px';
+    explanationBox.style.borderRadius = '8px';
+    explanationBox.style.textAlign = 'left';
+    explanationBox.style.fontFamily = 'monospace';
+    explanationBox.style.fontSize = '14px';
+
+    state.symbolsA.forEach(symbol => {
+        const codePoint = symbol.codePointAt(0);
+        const lastDigit = codePoint % 10;
+        const line = document.createElement('div');
+        line.innerHTML = `สัญลักษณ์ '${symbol}' → Code Point: ${codePoint} → เลขตัวสุดท้าย: <strong style="color: #7dd3fc;">${lastDigit}</strong>`;
+        explanationBox.appendChild(line);
+    });
+
+    summary.appendChild(explanationBox);
+    gameArea.appendChild(summary);
+
+    // ปิดการใช้งานปุ่มทั้งหมด
+    document.querySelectorAll('#game button').forEach(b => b.disabled = true);
+}
+
 
 function formatTime(sec){
   sec = Number(sec || 0);
