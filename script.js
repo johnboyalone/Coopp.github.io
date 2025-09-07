@@ -1,4 +1,4 @@
-// Defuse Duo - script.js (Esoteric Symbols Version)
+// Defuse Duo - script.js (Multi-Stage Complete Version)
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
 import {
@@ -66,15 +66,38 @@ function shuffleArray(array) {
   return array;
 }
 
-function generateBombPuzzle(){
-  // NEW ESOTERIC SYMBOLS
-  const pool = ['⍰','↟','⍼','⟐','⨳','⩻','⪢','⟁','⍬','⦚','⟓','⨇'];
-  const selectedSymbols = shuffleArray([...pool]).slice(0, 4);
-  
+function generateFullPuzzle() {
+  // Stage 1: Wires
+  const symbolPool = ['⍰','↟','⍼','⟐','⨳','⩻','⪢','⟁','⍬','⦚','⟓','⨇'];
+  const selectedSymbols = shuffleArray([...symbolPool]).slice(0, 4);
   const wiresOnBomb = shuffleArray([...selectedSymbols]);
   const defuseOrder = selectedSymbols;
 
-  return { wiresOnBomb, defuseOrder };
+  // Stage 2: Frequency
+  const initialFreq = Math.floor(Math.random() * 900) + 100; // 100-999
+  const freqDigits = initialFreq.toString().split('').map(Number);
+  const correctFreq = (freqDigits[0] + freqDigits[2]) * 10;
+
+  // Stage 3: Password
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const grid = Array(25).fill(0).map(() => chars[Math.floor(Math.random() * chars.length)]);
+  const passwordLength = 5;
+  const passwordPositions = [];
+  const passwordChars = [];
+  while (passwordPositions.length < passwordLength) {
+    const pos = Math.floor(Math.random() * 25);
+    if (!passwordPositions.includes(pos)) {
+      passwordPositions.push(pos);
+      passwordChars.push(grid[pos]);
+    }
+  }
+  const correctPassword = passwordChars.join('');
+
+  return {
+    stage1: { wiresOnBomb, defuseOrder },
+    stage2: { initialFreq, correctFreq },
+    stage3: { grid, passwordPositions, correctPassword }
+  };
 }
 
 // --- Auth Handling ---
@@ -109,18 +132,18 @@ createRoomBtn.addEventListener('click', async ()=>{
   me.name = displayNameInput.value || ('CONTROL-' + me.uid.slice(0,4));
   const roomId = makeRoomId(6);
   const roomRef = doc(db, 'rooms', roomId);
-  const puzzle = generateBombPuzzle();
+  const puzzle = generateFullPuzzle();
   const initial = {
     createdAt: serverTimestamp(),
     owner: me.uid,
     players: [{ uid: me.uid, name: me.name }],
     status: 'waiting',
     state: {
-      wiresOnBomb: puzzle.wiresOnBomb,
-      defuseOrder: puzzle.defuseOrder,
+      puzzle: puzzle,
+      currentStage: 1,
       wiresCut: [],
       defused: false,
-      timeLeft: 180
+      timeLeft: 300 // 5 minutes for 3 stages
     }
   };
   await setDoc(roomRef, initial);
@@ -187,14 +210,15 @@ async function enterRoom(roomId){
       if (!isGameUIShown) {
         localRole = (data.owner === me.uid) ? 'Tech Expert' : 'Field Agent';
         ownerUid = data.owner;
-        showGame(data);
         isGameUIShown = true;
       }
-      updateGameState(data);
+      showGame(data);
     } else if (data.status === 'finished') {
       if (isGameUIShown) {
         showFinishedScreen(data);
       }
+    } else if (data.status === 'waiting') {
+        showLobbyRoomView();
     }
   });
 
@@ -224,7 +248,7 @@ function showLobbyRoomView(){
   isGameUIShown = false;
   clearInterval(countdownInterval);
   countdownInterval = null;
-  mainLobby.querySelector('#lobby .card')?.classList.remove('hidden');
+  mainLobby.classList.remove('hidden');
   roomInfo.classList.remove('hidden');
   sectionGame.classList.add('hidden');
   joinArea.classList.add('hidden');
@@ -256,117 +280,229 @@ async function cleanupRoom(){
 }
 
 function showGame(roomData){
-  mainLobby.querySelector('#lobby .card')?.classList.add('hidden');
-  roomInfo.classList.add('hidden');
+  mainLobby.classList.add('hidden');
   sectionGame.classList.remove('hidden');
-  hintText.textContent = '';
   roleTitle.textContent = `บทบาท: ${localRole}`;
+  
+  updateTimer(roomData.state.timeLeft);
+  startTimer(roomData);
 
-  renderGameUI(roomData);
-
-  if (me.uid === roomData.owner && !countdownInterval) {
-    countdownInterval = setInterval(async ()=>{
-      const roomRef = doc(db, 'rooms', currentRoomId);
-      const snap = await getDoc(roomRef);
-      if (!snap.exists()) { clearInterval(countdownInterval); return; }
-      const r = snap.data();
-      if (!r.state || r.state.defused || r.state.timeLeft <= 0 || r.status !== 'playing') {
-        clearInterval(countdownInterval);
-        countdownInterval = null;
-        if (r.state.timeLeft <= 0 && r.status === 'playing') {
-          await updateDoc(roomRef, { status: 'finished', 'state.defused': false });
-        }
-        return;
-      }
-      const newTime = (r.state.timeLeft || 0) - 1;
-      await updateDoc(roomRef, { 'state.timeLeft': newTime });
-    }, 1000);
-  }
+  renderCurrentStage(roomData);
 }
 
-function updateGameState(roomData) {
-    const state = roomData.state || {};
-    timerText.textContent = 'เวลา: ' + formatTime(state.timeLeft || 0);
-    if (state.timeLeft < 30) {
-        timerText.classList.add('timer-critical');
-    } else {
-        timerText.classList.remove('timer-critical');
-    }
-
-    if (localRole === 'Field Agent') {
-        const wires = document.querySelectorAll('.wire');
-        wires.forEach(wireEl => {
-            const wireSymbol = wireEl.dataset.symbol;
-            if (state.wiresCut.includes(wireSymbol)) {
-                wireEl.classList.add('cut');
-            }
-        });
-    }
-}
-
-function renderGameUI(roomData){
+function renderCurrentStage(roomData) {
   gameArea.innerHTML = '';
-  const state = roomData.state || {};
+  const state = roomData.state;
+  
+  const stageIndicator = document.createElement('div');
+  stageIndicator.className = 'stage-indicator';
+  for (let i = 1; i <= 3; i++) {
+    const dot = document.createElement('div');
+    dot.className = 'stage-dot';
+    if (i < state.currentStage) dot.classList.add('completed');
+    if (i === state.currentStage) dot.classList.add('active');
+    stageIndicator.appendChild(dot);
+  }
+  gameArea.appendChild(stageIndicator);
+
+  if (state.currentStage === 1) renderStage1(roomData);
+  else if (state.currentStage === 2) renderStage2(roomData);
+  else if (state.currentStage === 3) renderStage3(roomData);
+}
+
+// --- STAGE 1: WIRE CUTTING ---
+function renderStage1(roomData) {
+  const puzzleState = roomData.state.puzzle.stage1;
+  const wiresCut = roomData.state.wiresCut;
 
   if (localRole === 'Tech Expert') {
-    const info = document.createElement('p');
-    info.textContent = 'คู่มือการกู้ระเบิด: บอกให้คู่หูตัดสายไฟตามลำดับต่อไปนี้!';
-    info.className = 'muted';
-    gameArea.appendChild(info);
-
     const manualList = document.createElement('ol');
     manualList.className = 'manual-list';
-    (state.defuseOrder || []).forEach((symbol, index) => {
+    puzzleState.defuseOrder.forEach((symbol, index) => {
         const li = document.createElement('li');
-        li.innerHTML = `ลำดับที่ ${index + 1}: <strong style="font-family: 'Segoe UI Symbol', sans-serif;">${symbol}</strong>`;
+        li.innerHTML = `ลำดับที่ ${index + 1}: <strong>${symbol}</strong>`;
         manualList.appendChild(li);
     });
     gameArea.appendChild(manualList);
-
   } else { // Field Agent
-    const info = document.createElement('p');
-    info.textContent = 'คุณอยู่หน้าแผงวงจร! รายงานสัญลักษณ์บนสายไฟให้ผู้เชี่ยวชาญทราบ และตัดตามคำสั่ง!';
-    info.className = 'muted';
-    gameArea.appendChild(info);
-
     const wireContainer = document.createElement('div');
     wireContainer.className = 'wire-container';
-
-    (state.wiresOnBomb || []).forEach(symbol => {
+    puzzleState.wiresOnBomb.forEach(symbol => {
         const wireEl = document.createElement('div');
         wireEl.className = 'wire';
-        wireEl.style.fontFamily = "'Segoe UI Symbol', sans-serif";
         wireEl.textContent = symbol;
-        wireEl.dataset.symbol = symbol;
-
-        wireEl.addEventListener('click', async () => {
-            const roomRef = doc(db, 'rooms', currentRoomId);
-            const currentSnap = await getDoc(roomRef);
-            const currentData = currentSnap.data();
-            const currentState = currentData.state;
-
-            if (currentState.wiresCut.includes(symbol) || currentData.status === 'finished') return;
-
-            const nextWireToCut = currentState.defuseOrder[currentState.wiresCut.length];
-
-            if (symbol === nextWireToCut) {
-                const newWiresCut = [...currentState.wiresCut, symbol];
-                if (newWiresCut.length === 4) {
-                    await updateDoc(roomRef, { 'state.wiresCut': newWiresCut, 'state.defused': true, status: 'finished' });
-                } else {
-                    await updateDoc(roomRef, { 'state.wiresCut': newWiresCut });
-                }
-            } else {
-                await updateDoc(roomRef, { status: 'finished', 'state.defused': false });
-            }
-        });
+        wireEl.style.fontFamily = "'Segoe UI Symbol', sans-serif";
+        if (wiresCut.includes(symbol)) {
+            wireEl.classList.add('cut');
+        } else {
+            wireEl.addEventListener('click', () => handleWireCut(symbol));
+        }
         wireContainer.appendChild(wireEl);
     });
     gameArea.appendChild(wireContainer);
   }
 }
 
+async function handleWireCut(symbol) {
+  const roomRef = doc(db, 'rooms', currentRoomId);
+  const currentSnap = await getDoc(roomRef);
+  const data = currentSnap.data();
+  if (data.status !== 'playing') return;
+
+  const state = data.state;
+  const nextWireToCut = state.puzzle.stage1.defuseOrder[state.wiresCut.length];
+
+  if (symbol === nextWireToCut) {
+    const newWiresCut = [...state.wiresCut, symbol];
+    if (newWiresCut.length === 4) {
+      await updateDoc(roomRef, { 'state.wiresCut': newWiresCut, 'state.currentStage': 2 });
+    } else {
+      await updateDoc(roomRef, { 'state.wiresCut': newWiresCut });
+    }
+  } else {
+    await updateDoc(roomRef, { status: 'finished', 'state.defused': false });
+  }
+}
+
+// --- STAGE 2: FREQUENCY TUNING ---
+function renderStage2(roomData) {
+  const puzzleState = roomData.state.puzzle.stage2;
+  if (localRole === 'Tech Expert') {
+    const info = document.createElement('p');
+    info.innerHTML = `คู่มือด่าน 2: คำนวณหาความถี่ที่ถูกต้องจากเลขที่คู่หูเห็น<br><b>สูตร: (เลขตัวแรก + เลขตัวสุดท้าย) * 10</b>`;
+    gameArea.appendChild(info);
+  } else { // Field Agent
+    let currentFreq = puzzleState.initialFreq;
+    const tunerContainer = document.createElement('div');
+    tunerContainer.className = 'tuner-container';
+    
+    const display = document.createElement('div');
+    display.className = 'tuner-display';
+    display.textContent = currentFreq;
+
+    const btnMinus = document.createElement('button');
+    btnMinus.className = 'tuner-btn';
+    btnMinus.textContent = '-';
+    btnMinus.onclick = () => { currentFreq--; display.textContent = currentFreq; };
+
+    const btnPlus = document.createElement('button');
+    btnPlus.className = 'tuner-btn';
+    btnPlus.textContent = '+';
+    btnPlus.onclick = () => { currentFreq++; display.textContent = currentFreq; };
+    
+    const confirmBtn = document.createElement('button');
+    confirmBtn.textContent = 'ยืนยันความถี่';
+    confirmBtn.onclick = () => handleFrequencyConfirm(currentFreq);
+
+    tunerContainer.append(btnMinus, display, btnPlus);
+    gameArea.append(tunerContainer, confirmBtn);
+  }
+}
+
+async function handleFrequencyConfirm(freq) {
+    const roomRef = doc(db, 'rooms', currentRoomId);
+    const currentSnap = await getDoc(roomRef);
+    if (currentSnap.data().status !== 'playing') return;
+    const correctFreq = currentSnap.data().state.puzzle.stage2.correctFreq;
+
+    if (freq === correctFreq) {
+        await updateDoc(roomRef, { 'state.currentStage': 3 });
+    } else {
+        await updateDoc(roomRef, { status: 'finished', 'state.defused': false });
+    }
+}
+
+// --- STAGE 3: PASSWORD OVERRIDE ---
+function renderStage3(roomData) {
+  const puzzleState = roomData.state.puzzle.stage3;
+  if (localRole === 'Tech Expert') {
+    const grid = document.createElement('div');
+    grid.className = 'password-grid';
+    puzzleState.grid.forEach(char => {
+      const cell = document.createElement('div');
+      cell.className = 'grid-cell';
+      cell.textContent = char;
+      grid.appendChild(cell);
+    });
+    gameArea.appendChild(grid);
+  } else { // Field Agent
+    const grid = document.createElement('div');
+    grid.className = 'password-grid';
+    for(let i = 0; i < 25; i++) {
+      const cell = document.createElement('div');
+      cell.className = 'grid-cell';
+      if (puzzleState.passwordPositions.includes(i)) {
+        cell.classList.add('highlight');
+        cell.textContent = '?';
+      }
+      grid.appendChild(cell);
+    }
+    
+    const inputArea = document.createElement('div');
+    inputArea.className = 'password-input-area';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.placeholder = 'ป้อนรหัสผ่าน...';
+    input.maxLength = 5;
+    
+    const confirmBtn = document.createElement('button');
+    confirmBtn.textContent = 'ปลดล็อก';
+    confirmBtn.onclick = () => handlePasswordConfirm(input.value.toUpperCase());
+
+    inputArea.append(input, confirmBtn);
+    gameArea.append(grid, inputArea);
+  }
+}
+
+async function handlePasswordConfirm(password) {
+    const roomRef = doc(db, 'rooms', currentRoomId);
+    const currentSnap = await getDoc(roomRef);
+    if (currentSnap.data().status !== 'playing') return;
+    const correctPassword = currentSnap.data().state.puzzle.stage3.correctPassword;
+
+    if (password === correctPassword) {
+        await updateDoc(roomRef, { status: 'finished', 'state.defused': true });
+    } else {
+        await updateDoc(roomRef, { status: 'finished', 'state.defused': false });
+    }
+}
+
+// --- Timer and Finish Screen Logic ---
+function startTimer(roomData) {
+  if (me.uid === roomData.owner && !countdownInterval) {
+    countdownInterval = setInterval(async ()=>{
+      const roomRef = doc(db, 'rooms', currentRoomId);
+      const snap = await getDoc(roomRef);
+      if (!snap.exists()) { clearInterval(countdownInterval); return; }
+      const r = snap.data();
+      if (!r.state || r.status !== 'playing') {
+        clearInterval(countdownInterval);
+        countdownInterval = null;
+        return;
+      }
+      const newTime = (r.state.timeLeft || 0) - 1;
+      if (newTime <= 0) {
+        await updateDoc(roomRef, { 'state.timeLeft': 0, status: 'finished', 'state.defused': false });
+      } else {
+        await updateDoc(roomRef, { 'state.timeLeft': newTime });
+      }
+    }, 1000);
+  }
+}
+
+function updateTimer(timeLeft) {
+  timerText.textContent = 'เวลา: ' + formatTime(timeLeft);
+  if (timeLeft < 60 && timeLeft > 0) {
+      timerText.classList.add('timer-critical');
+  } else {
+      timerText.classList.remove('timer-critical');
+  }
+}
+
 function showFinishedScreen(roomData) {
+    clearInterval(countdownInterval);
+    countdownInterval = null;
+    isGameUIShown = false;
     gameArea.innerHTML = '';
     const state = roomData.state;
 
@@ -384,14 +520,13 @@ function showFinishedScreen(roomData) {
     summary.appendChild(title);
 
     const report = document.createElement('p');
-    report.innerHTML = `ลำดับการตัดที่ถูกต้องคือ: <strong style="color: var(--warning); font-family: 'Segoe UI Symbol', sans-serif;">${state.defuseOrder.join(' → ')}</strong>`;
+    report.innerHTML = `เวลาที่เหลือ: ${formatTime(state.timeLeft)}`;
     summary.appendChild(report);
 
     gameArea.appendChild(summary);
     document.querySelectorAll('#game button').forEach(b => b.disabled = true);
     backToLobbyBtn.disabled = false;
 }
-
 
 function formatTime(sec){
   sec = Number(sec || 0);
