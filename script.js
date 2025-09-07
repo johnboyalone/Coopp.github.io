@@ -1,4 +1,4 @@
-// Defuse Duo - script.js (Fixed "not iterable" and "Unexpected end of input" errors)
+// Defuse Duo - script.js (Final Fix for createRoom issue)
 
 // =================================================================
 // PART 1: MAIN CONTROL, LOBBY, AND FIREBASE SETUP
@@ -92,24 +92,30 @@ onAuthStateChanged(auth, (user) => {
 createRoomBtn.addEventListener('click', async ()=>{
   if (!me) return alert('ยังไม่เชื่อมต่อศูนย์บัญชาการ (รอสักครู่แล้วลองใหม่)');
   me.name = displayNameInput.value || ('CONTROL-' + me.uid.slice(0,4));
-  const roomId = makeRoomId(6);
-  const roomRef = doc(db, 'rooms', roomId);
-  const puzzle = generateFullPuzzle(roomId); // This function is in Part 2
-  const initial = {
-    createdAt: serverTimestamp(),
-    owner: me.uid,
-    players: [{ uid: me.uid, name: me.name }],
-    status: 'waiting',
-    state: {
-      puzzle: puzzle,
-      currentStage: 1,
-      logicGrid_playerPresses: [],
-      defused: false,
-      timeLeft: 300
-    }
-  };
-  await setDoc(roomRef, initial);
-  enterRoom(roomId);
+  
+  try {
+    const roomId = makeRoomId(6);
+    const roomRef = doc(db, 'rooms', roomId);
+    const puzzle = generateFullPuzzle(roomId); // This function is in Part 2
+    const initial = {
+      createdAt: serverTimestamp(),
+      owner: me.uid,
+      players: [{ uid: me.uid, name: me.name }],
+      status: 'waiting',
+      state: {
+        puzzle: puzzle,
+        currentStage: 1,
+        logicGrid_playerPresses: [],
+        defused: false,
+        timeLeft: 300
+      }
+    };
+    await setDoc(roomRef, initial);
+    enterRoom(roomId);
+  } catch (error) {
+    console.error("Error creating room:", error);
+    alert("เกิดข้อผิดพลาดในการสร้างห้อง! กรุณาตรวจสอบ Console");
+  }
 });
 
 joinRoomBtn.addEventListener('click', ()=>{
@@ -350,6 +356,7 @@ const stage1RuleLibrary = {
     }
 };
 
+// *** FIX: shuffleArray function was missing from this part ***
 function shuffleArray(array) {
   for (let i = array.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -443,14 +450,12 @@ function showGame(roomData){
   updateTimer(roomData.state.timeLeft);
   startTimer(roomData);
 
-  // FIX: Add a check to ensure puzzle data exists before rendering
   if (roomData.state && roomData.state.puzzle) {
     if (renderedStage !== roomData.state.currentStage) {
       renderCurrentStage(roomData);
       renderedStage = roomData.state.currentStage;
     }
   } else {
-    // Show a loading state if puzzle data is not ready yet
     gameArea.innerHTML = '<p>กำลังโหลดข้อมูลภารกิจ...</p>';
   }
 }
@@ -522,13 +527,11 @@ async function handleWireCut(cutWireId) {
     const roomRef = doc(db, 'rooms', currentRoomId);
     const snap = await getDoc(roomRef);
     const data = snap.data();
-    // FIX: Add check for puzzle data
     if (data.status !== 'playing' || !data.state.puzzle) return; 
 
     const wires = data.state.puzzle.stage1.wiresOnBomb;
     const rulesFromDB = data.state.puzzle.stage1.rules;
 
-    // FIX: Ensure rulesFromDB is an array before iterating
     if (!Array.isArray(rulesFromDB)) {
         console.error("rulesFromDB is not an array!", rulesFromDB);
         return; 
@@ -544,6 +547,8 @@ async function handleWireCut(cutWireId) {
     }
 
     if (!correctWireToCut) {
+        // This case might happen if a rule action points to a wire that doesn't exist (e.g., rule 'HAS_DIAMOND' but no '↟' wire)
+        // We'll treat it as a failure.
         await updateDoc(roomRef, { status: 'finished', 'state.defused': false });
         return;
     }
@@ -554,6 +559,7 @@ async function handleWireCut(cutWireId) {
         await updateDoc(roomRef, { status: 'finished', 'state.defused': false });
     }
 }
+
 // --- STAGE 2: FREQUENCY TUNING ---
 function renderStage2(roomData) {
   const puzzleState = roomData.state.puzzle.stage2;
@@ -765,4 +771,3 @@ async function handleLogicGridPress(color) {
         renderedStage = 0; 
     }
 }
-
