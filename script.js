@@ -1,4 +1,9 @@
 // Defuse Duo - script.js (Upgraded Stage 1 - Complete)
+
+// =================================================================
+// PART 1: MAIN CONTROL, LOBBY, AND FIREBASE SETUP
+// =================================================================
+
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
 import {
@@ -50,102 +55,12 @@ let countdownInterval = null;
 let isGameUIShown = false;
 let renderedStage = 0;
 
-// --- Helper Functions ---
+// --- Helper ---
 function makeRoomId(len = 6){
   const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
   let out = '';
   for (let i=0;i<len;i++) out += chars.charAt(Math.floor(Math.random()*chars.length));
   return out;
-}
-
-function shuffleArray(array) {
-  for (let i = array.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [array[i], array[j]] = [array[j], array[i]];
-  }
-  return array;
-}
-
-function generateFullPuzzle(roomId) {
-  // --- STAGE 1: CONDITIONAL WIRING (UPGRADED) ---
-  const symbolPool = ['⍰','↟','⍼','⟐','⨳','⩻','⪢','⟁'];
-  const colorPool = ['red', 'blue', 'yellow'];
-  const wiresOnBomb = [];
-  for (let i = 0; i < 4; i++) {
-    wiresOnBomb.push({
-      id: i,
-      symbol: symbolPool[Math.floor(Math.random() * symbolPool.length)],
-      color: colorPool[Math.floor(Math.random() * colorPool.length)]
-    });
-  }
-  const ruleSet = [
-    {
-      condition: (wires) => wires.filter(w => w.color === 'red').length > 1,
-      action: (wires) => wires.filter(w => w.color === 'red').pop(),
-      description: "ถ้ามีสายไฟสี <b>แดง</b> มากกว่า 1 เส้น",
-      subDescription: "→ ให้ตัดสายไฟสี <b>แดง</b> เส้นสุดท้าย"
-    },
-    {
-      condition: (wires) => !wires.some(w => w.color === 'blue'),
-      action: (wires) => wires[1],
-      description: "ถ้า <b>ไม่มี</b> สายไฟสี <b>น้ำเงิน</b> เลย",
-      subDescription: "→ ให้ตัดสายไฟเส้นที่ <b>สอง</b>"
-    },
-    {
-      condition: (wires) => wires.some(w => w.symbol === '⟐'),
-      action: (wires) => wires.find(w => w.symbol === '↟'),
-      description: "ถ้ามีสายไฟสัญลักษณ์ <b>⟐</b>",
-      subDescription: "→ ให้ตัดสายไฟสัญลักษณ์ <b>↟</b> (ถ้ามี)"
-    },
-    {
-      condition: (wires) => wires.filter(w => w.color === 'yellow').length === 1,
-      action: (wires) => wires.find(w => w.color === 'yellow'),
-      description: "ถ้ามีสายไฟสี <b>เหลือง</b> เพียงเส้นเดียว",
-      subDescription: "→ ให้ตัดสายไฟสี <b>เหลือง</b> เส้นนั้น"
-    }
-  ];
-  const stage1Rules = shuffleArray(ruleSet).slice(0, 3);
-  stage1Rules.push({
-      condition: () => true,
-      action: (wires) => wires[0],
-      description: "มิเช่นนั้น (ถ้าไม่มีกฎข้อไหนตรงเลย)",
-      subDescription: "→ ให้ตัดสายไฟเส้น <b>แรก</b>"
-  });
-
-  // --- STAGE 2: FREQUENCY ---
-  const initialFreq = Math.floor(Math.random() * 900) + 100;
-  const freqDigits = initialFreq.toString().split('').map(Number);
-  const correctFreq = (freqDigits[0] + freqDigits[2]) * 10;
-
-  // --- STAGE 3: PASSWORD ---
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-  const grid = Array(25).fill(0).map(() => chars[Math.floor(Math.random() * chars.length)]);
-  const passwordLength = 5;
-  const passwordPositions = [];
-  const passwordChars = [];
-  while (passwordPositions.length < passwordLength) {
-    const pos = Math.floor(Math.random() * 25);
-    if (!passwordPositions.includes(pos)) {
-      passwordPositions.push(pos);
-      passwordChars.push(grid[pos]);
-    }
-  }
-  const correctPassword = passwordChars.join('');
-
-  // --- STAGE 4: LOGIC GRID ---
-  const colors = ['red', 'blue', 'green', 'yellow'];
-  const flashSequence = Array(5).fill(0).map(() => colors[Math.floor(Math.random() * 4)]);
-  const colorMap = {};
-  const shuffledColors = shuffleArray([...colors]);
-  colors.forEach((color, i) => { colorMap[color] = shuffledColors[i]; });
-  const hasNumberInRoomId = /\d/.test(roomId);
-
-  return {
-    stage1: { wiresOnBomb, rules: stage1Rules },
-    stage2: { initialFreq, correctFreq },
-    stage3: { grid, passwordPositions, correctPassword },
-    stage4: { flashSequence, colorMap, hasNumberInRoomId }
-  };
 }
 
 // --- Auth Handling ---
@@ -179,7 +94,7 @@ createRoomBtn.addEventListener('click', async ()=>{
   me.name = displayNameInput.value || ('CONTROL-' + me.uid.slice(0,4));
   const roomId = makeRoomId(6);
   const roomRef = doc(db, 'rooms', roomId);
-  const puzzle = generateFullPuzzle(roomId);
+  const puzzle = generateFullPuzzle(roomId); // This function is in Part 2
   const initial = {
     createdAt: serverTimestamp(),
     owner: me.uid,
@@ -238,7 +153,7 @@ backToLobbyBtn.addEventListener('click', ()=>{
   }
 });
 
-// --- Room & Game Logic ---
+// --- Room & Game State Management ---
 async function enterRoom(roomId){
   currentRoomId = roomId;
   const ref = doc(db, 'rooms', roomId);
@@ -328,6 +243,177 @@ async function cleanupRoom(){
   renderedStage = 0;
 }
 
+// --- Timer and Finish Screen Logic ---
+function startTimer(roomData) {
+  if (me.uid === roomData.owner && !countdownInterval) {
+    countdownInterval = setInterval(async ()=>{
+      const roomRef = doc(db, 'rooms', currentRoomId);
+      const snap = await getDoc(roomRef);
+      if (!snap.exists()) { clearInterval(countdownInterval); return; }
+      const r = snap.data();
+      if (!r.state || r.status !== 'playing') {
+        clearInterval(countdownInterval);
+        countdownInterval = null;
+        return;
+      }
+      const newTime = (r.state.timeLeft || 0) - 1;
+      if (newTime < 0) {
+        clearInterval(countdownInterval);
+        countdownInterval = null;
+        await updateDoc(roomRef, { 'state.timeLeft': 0, status: 'finished', 'state.defused': false });
+      } else {
+        await updateDoc(roomRef, { 'state.timeLeft': newTime });
+      }
+    }, 1000);
+  }
+}
+
+function updateTimer(timeLeft) {
+  timerText.textContent = 'เวลา: ' + formatTime(timeLeft);
+  if (timeLeft < 60 && timeLeft > 0) {
+      timerText.classList.add('timer-critical');
+  } else {
+      timerText.classList.remove('timer-critical');
+  }
+}
+
+function showFinishedScreen(roomData) {
+    clearInterval(countdownInterval);
+    countdownInterval = null;
+    isGameUIShown = false;
+    renderedStage = 0;
+    gameArea.innerHTML = '';
+    const state = roomData.state;
+
+    const summary = document.createElement('div');
+    summary.style.textAlign = 'center';
+
+    const title = document.createElement('h3');
+    if (state.defused) {
+        title.textContent = '✅ ภารกิจสำเร็จ! ระเบิดถูกกู้แล้ว! ✅';
+        title.style.color = 'var(--accent)';
+    } else {
+        title.textContent = '💥 ภารกิจล้มเหลว! 💥';
+        title.style.color = 'var(--danger)';
+    }
+    summary.appendChild(title);
+
+    const report = document.createElement('p');
+    report.innerHTML = `เวลาที่เหลือ: ${formatTime(state.timeLeft)}`;
+    summary.appendChild(report);
+
+    gameArea.appendChild(summary);
+    document.querySelectorAll('#game button').forEach(b => b.disabled = true);
+    backToLobbyBtn.disabled = false;
+}
+
+function formatTime(sec){
+  sec = Number(sec || 0);
+  if (sec < 0) sec = 0;
+  const m = Math.floor(sec/60).toString().padStart(2,'0');
+  const s = (sec%60).toString().padStart(2,'0');
+  return `${m}:${s}`;
+}
+
+window.addEventListener('beforeunload', async ()=>{
+  if (currentRoomId && me) {
+    cleanupRoom();
+  }
+});
+// =================================================================
+// PART 2: PUZZLE MODULES AND GAME LOGIC
+// =================================================================
+
+function shuffleArray(array) {
+  for (let i = array.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [array[i], array[j]] = [array[j], array[i]];
+  }
+  return array;
+}
+
+function generateFullPuzzle(roomId) {
+  // --- STAGE 1: CONDITIONAL WIRING ---
+  const symbolPool = ['⍰','↟','⍼','⟐','⨳','⩻','⪢','⟁'];
+  const colorPool = ['red', 'blue', 'yellow'];
+  const wiresOnBomb = [];
+  for (let i = 0; i < 4; i++) {
+    wiresOnBomb.push({
+      id: i,
+      symbol: symbolPool[Math.floor(Math.random() * symbolPool.length)],
+      color: colorPool[Math.floor(Math.random() * colorPool.length)]
+    });
+  }
+  const ruleSet = [
+    {
+      condition: (wires) => wires.filter(w => w.color === 'red').length > 1,
+      action: (wires) => wires.filter(w => w.color === 'red').pop(),
+      description: "ถ้ามีสายไฟสี <b>แดง</b> มากกว่า 1 เส้น",
+      subDescription: "→ ให้ตัดสายไฟสี <b>แดง</b> เส้นสุดท้าย"
+    },
+    {
+      condition: (wires) => !wires.some(w => w.color === 'blue'),
+      action: (wires) => wires[1],
+      description: "ถ้า <b>ไม่มี</b> สายไฟสี <b>น้ำเงิน</b> เลย",
+      subDescription: "→ ให้ตัดสายไฟเส้นที่ <b>สอง</b>"
+    },
+    {
+      condition: (wires) => wires.some(w => w.symbol === '⟐'),
+      action: (wires) => wires.find(w => w.symbol === '↟'),
+      description: "ถ้ามีสายไฟสัญลักษณ์ <b>⟐</b>",
+      subDescription: "→ ให้ตัดสายไฟสัญลักษณ์ <b>↟</b> (ถ้ามี)"
+    },
+    {
+      condition: (wires) => wires.filter(w => w.color === 'yellow').length === 1,
+      action: (wires) => wires.find(w => w.color === 'yellow'),
+      description: "ถ้ามีสายไฟสี <b>เหลือง</b> เพียงเส้นเดียว",
+      subDescription: "→ ให้ตัดสายไฟสี <b>เหลือง</b> เส้นนั้น"
+    }
+  ];
+  const stage1Rules = shuffleArray(ruleSet).slice(0, 3);
+  stage1Rules.push({
+      condition: () => true,
+      action: (wires) => wires[0],
+      description: "มิเช่นนั้น (ถ้าไม่มีกฎข้อไหนตรงเลย)",
+      subDescription: "→ ให้ตัดสายไฟเส้น <b>แรก</b>"
+  });
+
+  // --- STAGE 2: FREQUENCY ---
+  const initialFreq = Math.floor(Math.random() * 900) + 100;
+  const freqDigits = initialFreq.toString().split('').map(Number);
+  const correctFreq = (freqDigits[0] + freqDigits[2]) * 10;
+
+  // --- STAGE 3: PASSWORD ---
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const grid = Array(25).fill(0).map(() => chars[Math.floor(Math.random() * chars.length)]);
+  const passwordLength = 5;
+  const passwordPositions = [];
+  const passwordChars = [];
+  while (passwordPositions.length < passwordLength) {
+    const pos = Math.floor(Math.random() * 25);
+    if (!passwordPositions.includes(pos)) {
+      passwordPositions.push(pos);
+      passwordChars.push(grid[pos]);
+    }
+  }
+  const correctPassword = passwordChars.join('');
+
+  // --- STAGE 4: LOGIC GRID ---
+  const colors = ['red', 'blue', 'green', 'yellow'];
+  const flashSequence = Array(5).fill(0).map(() => colors[Math.floor(Math.random() * 4)]);
+  const colorMap = {};
+  const shuffledColors = shuffleArray([...colors]);
+  colors.forEach((color, i) => { colorMap[color] = shuffledColors[i]; });
+  const hasNumberInRoomId = /\d/.test(roomId);
+
+  return {
+    stage1: { wiresOnBomb, rules: stage1Rules },
+    stage2: { initialFreq, correctFreq },
+    stage3: { grid, passwordPositions, correctPassword },
+    stage4: { flashSequence, colorMap, hasNumberInRoomId }
+  };
+}
+
 function showGame(roomData){
   mainLobby.classList.add('hidden');
   sectionGame.classList.remove('hidden');
@@ -363,7 +449,7 @@ function renderCurrentStage(roomData) {
   else if (state.currentStage === 4) renderStage4(roomData);
 }
 
-// --- STAGE 1: CONDITIONAL WIRING (UPGRADED) ---
+// --- STAGE 1: CONDITIONAL WIRING ---
 function renderStage1(roomData) {
   const puzzleState = roomData.state.puzzle.stage1;
   if (localRole === 'Tech Expert') {
@@ -636,81 +722,3 @@ async function handleLogicGridPress(color) {
         renderedStage = 0; 
     }
 }
-
-// --- Timer and Finish Screen Logic ---
-function startTimer(roomData) {
-  if (me.uid === roomData.owner && !countdownInterval) {
-    countdownInterval = setInterval(async ()=>{
-      const roomRef = doc(db, 'rooms', currentRoomId);
-      const snap = await getDoc(roomRef);
-      if (!snap.exists()) { clearInterval(countdownInterval); return; }
-      const r = snap.data();
-      if (!r.state || r.status !== 'playing') {
-        clearInterval(countdownInterval);
-        countdownInterval = null;
-        return;
-      }
-      const newTime = (r.state.timeLeft || 0) - 1;
-      if (newTime < 0) {
-        clearInterval(countdownInterval);
-        countdownInterval = null;
-        await updateDoc(roomRef, { 'state.timeLeft': 0, status: 'finished', 'state.defused': false });
-      } else {
-        await updateDoc(roomRef, { 'state.timeLeft': newTime });
-      }
-    }, 1000);
-  }
-}
-
-function updateTimer(timeLeft) {
-  timerText.textContent = 'เวลา: ' + formatTime(timeLeft);
-  if (timeLeft < 60 && timeLeft > 0) {
-      timerText.classList.add('timer-critical');
-  } else {
-      timerText.classList.remove('timer-critical');
-  }
-}
-
-function showFinishedScreen(roomData) {
-    clearInterval(countdownInterval);
-    countdownInterval = null;
-    isGameUIShown = false;
-    renderedStage = 0;
-    gameArea.innerHTML = '';
-    const state = roomData.state;
-
-    const summary = document.createElement('div');
-    summary.style.textAlign = 'center';
-
-    const title = document.createElement('h3');
-    if (state.defused) {
-        title.textContent = '✅ ภารกิจสำเร็จ! ระเบิดถูกกู้แล้ว! ✅';
-        title.style.color = 'var(--accent)';
-    } else {
-        title.textContent = '💥 ภารกิจล้มเหลว! 💥';
-        title.style.color = 'var(--danger)';
-    }
-    summary.appendChild(title);
-
-    const report = document.createElement('p');
-    report.innerHTML = `เวลาที่เหลือ: ${formatTime(state.timeLeft)}`;
-    summary.appendChild(report);
-
-    gameArea.appendChild(summary);
-    document.querySelectorAll('#game button').forEach(b => b.disabled = true);
-    backToLobbyBtn.disabled = false;
-}
-
-function formatTime(sec){
-  sec = Number(sec || 0);
-  if (sec < 0) sec = 0;
-  const m = Math.floor(sec/60).toString().padStart(2,'0');
-  const s = (sec%60).toString().padStart(2,'0');
-  return `${m}:${s}`;
-}
-
-window.addEventListener('beforeunload', async ()=>{
-  if (currentRoomId && me) {
-    cleanupRoom();
-  }
-});
