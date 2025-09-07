@@ -1,7 +1,7 @@
-// Defuse Duo - script.js (Upgraded Stage 1 - Complete)
+// Defuse Duo - script.js (Fixed "Function in Firestore" Error)
 
 // =================================================================
-// PART 1: MAIN CONTROL, LOBBY, AND FIREBASE SETUP
+// PART 1/2: MAIN CONTROL, LOBBY, AND FIREBASE SETUP
 // =================================================================
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
@@ -321,8 +321,32 @@ window.addEventListener('beforeunload', async ()=>{
   }
 });
 // =================================================================
-// PART 2: PUZZLE MODULES AND GAME LOGIC
+// PART 2/2: PUZZLE MODULES AND GAME LOGIC
 // =================================================================
+
+// Rule Library for Stage 1 (Client-side logic)
+const stage1RuleLibrary = {
+    'MORE_THAN_ONE_RED': {
+        condition: (wires) => wires.filter(w => w.color === 'red').length > 1,
+        action: (wires) => wires.filter(w => w.color === 'red').pop(),
+    },
+    'NO_BLUE': {
+        condition: (wires) => !wires.some(w => w.color === 'blue'),
+        action: (wires) => wires[1],
+    },
+    'HAS_DIAMOND': {
+        condition: (wires) => wires.some(w => w.symbol === '⟐'),
+        action: (wires) => wires.find(w => w.symbol === '↟'),
+    },
+    'ONLY_ONE_YELLOW': {
+        condition: (wires) => wires.filter(w => w.color === 'yellow').length === 1,
+        action: (wires) => wires.find(w => w.color === 'yellow'),
+    },
+    'DEFAULT': {
+        condition: () => true,
+        action: (wires) => wires[0],
+    }
+};
 
 function shuffleArray(array) {
   for (let i = array.length - 1; i > 0; i--) {
@@ -333,7 +357,7 @@ function shuffleArray(array) {
 }
 
 function generateFullPuzzle(roomId) {
-  // --- STAGE 1: CONDITIONAL WIRING ---
+  // --- STAGE 1: CONDITIONAL WIRING (DATA ONLY) ---
   const symbolPool = ['⍰','↟','⍼','⟐','⨳','⩻','⪢','⟁'];
   const colorPool = ['red', 'blue', 'yellow'];
   const wiresOnBomb = [];
@@ -346,34 +370,29 @@ function generateFullPuzzle(roomId) {
   }
   const ruleSet = [
     {
-      condition: (wires) => wires.filter(w => w.color === 'red').length > 1,
-      action: (wires) => wires.filter(w => w.color === 'red').pop(),
+      id: 'MORE_THAN_ONE_RED',
       description: "ถ้ามีสายไฟสี <b>แดง</b> มากกว่า 1 เส้น",
       subDescription: "→ ให้ตัดสายไฟสี <b>แดง</b> เส้นสุดท้าย"
     },
     {
-      condition: (wires) => !wires.some(w => w.color === 'blue'),
-      action: (wires) => wires[1],
+      id: 'NO_BLUE',
       description: "ถ้า <b>ไม่มี</b> สายไฟสี <b>น้ำเงิน</b> เลย",
       subDescription: "→ ให้ตัดสายไฟเส้นที่ <b>สอง</b>"
     },
     {
-      condition: (wires) => wires.some(w => w.symbol === '⟐'),
-      action: (wires) => wires.find(w => w.symbol === '↟'),
+      id: 'HAS_DIAMOND',
       description: "ถ้ามีสายไฟสัญลักษณ์ <b>⟐</b>",
       subDescription: "→ ให้ตัดสายไฟสัญลักษณ์ <b>↟</b> (ถ้ามี)"
     },
     {
-      condition: (wires) => wires.filter(w => w.color === 'yellow').length === 1,
-      action: (wires) => wires.find(w => w.color === 'yellow'),
+      id: 'ONLY_ONE_YELLOW',
       description: "ถ้ามีสายไฟสี <b>เหลือง</b> เพียงเส้นเดียว",
       subDescription: "→ ให้ตัดสายไฟสี <b>เหลือง</b> เส้นนั้น"
     }
   ];
   const stage1Rules = shuffleArray(ruleSet).slice(0, 3);
   stage1Rules.push({
-      condition: () => true,
-      action: (wires) => wires[0],
+      id: 'DEFAULT',
       description: "มิเช่นนั้น (ถ้าไม่มีกฎข้อไหนตรงเลย)",
       subDescription: "→ ให้ตัดสายไฟเส้น <b>แรก</b>"
   });
@@ -498,12 +517,13 @@ async function handleWireCut(cutWireId) {
     if (data.status !== 'playing') return;
 
     const wires = data.state.puzzle.stage1.wiresOnBomb;
-    const rules = data.state.puzzle.stage1.rules;
+    const rulesFromDB = data.state.puzzle.stage1.rules;
 
     let correctWireToCut = null;
-    for (const rule of rules) {
-        if (rule.condition(wires)) {
-            correctWireToCut = rule.action(wires);
+    for (const ruleData of rulesFromDB) {
+        const ruleLogic = stage1RuleLibrary[ruleData.id];
+        if (ruleLogic && ruleLogic.condition(wires)) {
+            correctWireToCut = ruleLogic.action(wires);
             break;
         }
     }
