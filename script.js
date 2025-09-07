@@ -1,4 +1,4 @@
-// Defuse Duo - script.js (Fixed "Function in Firestore" Error)
+// Defuse Duo - script.js (Fixed "not iterable" and rendering race condition)
 
 // =================================================================
 // PART 1/2: MAIN CONTROL, LOBBY, AND FIREBASE SETUP
@@ -441,9 +441,15 @@ function showGame(roomData){
   updateTimer(roomData.state.timeLeft);
   startTimer(roomData);
 
-  if (renderedStage !== roomData.state.currentStage) {
-    renderCurrentStage(roomData);
-    renderedStage = roomData.state.currentStage;
+  // FIX: Add a check to ensure puzzle data exists before rendering
+  if (roomData.state && roomData.state.puzzle) {
+    if (renderedStage !== roomData.state.currentStage) {
+      renderCurrentStage(roomData);
+      renderedStage = roomData.state.currentStage;
+    }
+  } else {
+    // Show a loading state if puzzle data is not ready yet
+    gameArea.innerHTML = '<p>กำลังโหลดข้อมูลภารกิจ...</p>';
   }
 }
 
@@ -514,10 +520,16 @@ async function handleWireCut(cutWireId) {
     const roomRef = doc(db, 'rooms', currentRoomId);
     const snap = await getDoc(roomRef);
     const data = snap.data();
-    if (data.status !== 'playing') return;
+    if (data.status !== 'playing' || !data.state.puzzle) return; // FIX: Add check for puzzle data
 
     const wires = data.state.puzzle.stage1.wiresOnBomb;
     const rulesFromDB = data.state.puzzle.stage1.rules;
+
+    // FIX: Ensure rulesFromDB is an array before iterating
+    if (!Array.isArray(rulesFromDB)) {
+        console.error("rulesFromDB is not an array!", rulesFromDB);
+        return; 
+    }
 
     let correctWireToCut = null;
     for (const ruleData of rulesFromDB) {
@@ -739,6 +751,4 @@ async function handleLogicGridPress(color) {
             'state.logicGrid_playerPresses': [],
             'state.puzzle.stage4.flashSequence': newFlashSequence
         });
-        renderedStage = 0; 
-    }
-}
+        renderedStage =
