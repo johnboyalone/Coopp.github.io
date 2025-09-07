@@ -83,7 +83,7 @@ signInAnonymously(auth).catch((err)=>{
 
 onAuthStateChanged(auth, (user) => {
   if (user) {
-    me = { uid: user.uid, name: (displayNameInput.value || 'ผู้เล่น') };
+    me = { uid: user.uid };
     console.log('signed in', me.uid);
     createRoomBtn.disabled = false;
     createRoomBtn.textContent = 'สร้างห้องใหม่';
