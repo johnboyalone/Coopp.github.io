@@ -1,7 +1,7 @@
-// Defuse Duo - script.js (Fixed "not iterable" and rendering race condition)
+// Defuse Duo - script.js (Fixed "not iterable" and "Unexpected end of input" errors)
 
 // =================================================================
-// PART 1/2: MAIN CONTROL, LOBBY, AND FIREBASE SETUP
+// PART 1: MAIN CONTROL, LOBBY, AND FIREBASE SETUP
 // =================================================================
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
@@ -320,8 +320,10 @@ window.addEventListener('beforeunload', async ()=>{
     cleanupRoom();
   }
 });
+
+
 // =================================================================
-// PART 2/2: PUZZLE MODULES AND GAME LOGIC
+// PART 2: PUZZLE MODULES AND GAME LOGIC
 // =================================================================
 
 // Rule Library for Stage 1 (Client-side logic)
@@ -520,7 +522,8 @@ async function handleWireCut(cutWireId) {
     const roomRef = doc(db, 'rooms', currentRoomId);
     const snap = await getDoc(roomRef);
     const data = snap.data();
-    if (data.status !== 'playing' || !data.state.puzzle) return; // FIX: Add check for puzzle data
+    // FIX: Add check for puzzle data
+    if (data.status !== 'playing' || !data.state.puzzle) return; 
 
     const wires = data.state.puzzle.stage1.wiresOnBomb;
     const rulesFromDB = data.state.puzzle.stage1.rules;
@@ -551,7 +554,6 @@ async function handleWireCut(cutWireId) {
         await updateDoc(roomRef, { status: 'finished', 'state.defused': false });
     }
 }
-
 // --- STAGE 2: FREQUENCY TUNING ---
 function renderStage2(roomData) {
   const puzzleState = roomData.state.puzzle.stage2;
@@ -657,7 +659,6 @@ async function handlePasswordConfirm(password) {
         await updateDoc(roomRef, { status: 'finished', 'state.defused': false });
     }
 }
-
 // --- STAGE 4: LOGIC GRID ---
 function renderStage4(roomData) {
   const puzzleState = roomData.state.puzzle.stage4;
@@ -700,6 +701,7 @@ function renderStage4(roomData) {
 
     gameArea.append(info, gridContainer);
 
+    // หน่วงเวลาเล็กน้อยก่อนเริ่มกระพริบเพื่อให้ผู้เล่นตั้งตัว
     setTimeout(() => {
         let i = 0;
         const interval = setInterval(() => {
@@ -711,10 +713,10 @@ function renderStage4(roomData) {
             buttons[colorToFlash].classList.add('flash');
             setTimeout(() => {
                 buttons[colorToFlash].classList.remove('flash');
-            }, 400);
+            }, 400); // ระยะเวลาที่สีจะสว่าง
             i++;
-        }, 600);
-    }, 1000);
+        }, 600); // ความเร็วในการกระพริบ
+    }, 1500); // เริ่มกระพริบหลังจาก 1.5 วินาที
   }
 }
 
@@ -728,6 +730,7 @@ async function handleLogicGridPress(color) {
     const puzzle = state.puzzle.stage4;
     const playerPresses = state.logicGrid_playerPresses || [];
 
+    // คำนวณลำดับที่ถูกต้องฝั่ง Client
     let correctSequence = puzzle.flashSequence.map(seenColor => puzzle.colorMap[seenColor]);
     if (puzzle.hasNumberInRoomId) {
         correctSequence.reverse();
@@ -736,19 +739,30 @@ async function handleLogicGridPress(color) {
     const nextCorrectColor = correctSequence[playerPresses.length];
 
     if (color === nextCorrectColor) {
+        // ถ้ากดถูก
         const newPresses = [...playerPresses, color];
         if (newPresses.length === correctSequence.length) {
+            // ถ้ากดถูกครบทั้งหมด -> ชนะเกม
             await updateDoc(roomRef, { status: 'finished', 'state.defused': true });
         } else {
+            // ถ้ายังไม่ครบ ให้บันทึกลำดับที่กดแล้ว
             await updateDoc(roomRef, { 'state.logicGrid_playerPresses': newPresses });
         }
     } else {
-        const newTime = Math.max(0, state.timeLeft - 45);
+        // ถ้ากดผิด
+        const newTime = Math.max(0, state.timeLeft - 45); // ลดเวลา 45 วินาที
+        // สุ่มลำดับการกระพริบใหม่
         const newFlashSequence = Array(5).fill(0).map(() => ['red', 'blue', 'green', 'yellow'][Math.floor(Math.random() * 4)]);
         
+        // อัปเดต state ของเกม: เวลาลด, ล้างลำดับที่ผู้เล่นกด, และใช้ลำดับการกระพริบใหม่
         await updateDoc(roomRef, {
             'state.timeLeft': newTime,
             'state.logicGrid_playerPresses': [],
             'state.puzzle.stage4.flashSequence': newFlashSequence
         });
-        renderedStage =
+        
+        // บอกให้ Client รู้ว่าต้อง render ด่านนี้ใหม่ (เพราะ flashSequence เปลี่ยน)
+        renderedStage = 0; 
+    }
+}
+
