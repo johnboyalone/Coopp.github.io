@@ -6,6 +6,7 @@
   --accent:#34d399; /* Green */
   --danger: #ef4444; /* Red */
   --warning: #f59e0b; /* Yellow */
+  --info: #3b82f6; /* Blue */
 }
 *{box-sizing:border-box}
 html,body{height:100%;margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,"Noto Sans Thai",sans-serif;background:var(--bg);color:var(--text)}
@@ -34,16 +35,21 @@ button:disabled { background: #555; color: #999; cursor: not-allowed; }
 .stage-dot.active { background: var(--warning); }
 .stage-dot.completed { background: var(--accent); }
 
-/* --- Wire styles --- */
+/* --- Wire styles (Upgraded) --- */
 .wire-container { display: flex; flex-direction: column; gap: 16px; width: 80%; }
-.wire { background: #555; border-radius: 8px; padding: 12px; font-size: 24px; text-align: center; cursor: pointer; border: 2px solid #777; transition: all 0.2s ease; }
+.wire { background: #555; border-radius: 8px; padding: 12px; font-size: 24px; text-align: center; cursor: pointer; border: 3px solid #777; transition: all 0.2s ease; display: flex; justify-content: center; align-items: center; gap: 15px; }
 .wire:hover { background: #666; }
 .wire.cut { background: var(--danger); border-color: var(--danger); text-decoration: line-through; cursor: not-allowed; opacity: 0.5; }
+.wire-color-indicator { width: 20px; height: 20px; border-radius: 50%; }
+.wire-color-red { background-color: var(--danger); }
+.wire-color-blue { background-color: var(--info); }
+.wire-color-yellow { background-color: var(--warning); }
 
 /* --- Manual styles --- */
-.manual-list { list-style-type: none; padding: 0; width: 80%; }
-.manual-list li { background: rgba(0,0,0,0.2); margin-bottom: 8px; padding: 10px; border-radius: 6px; font-size: 18px; }
-.manual-list li strong { color: var(--warning); font-size: 24px; font-family: 'Segoe UI Symbol', sans-serif; }
+.manual-list { list-style-type: decimal; padding-left: 20px; width: 90%; }
+.manual-list li { background: rgba(0,0,0,0.2); margin-bottom: 8px; padding: 10px; border-radius: 6px; }
+.manual-list li strong { color: var(--warning); font-family: 'Segoe UI Symbol', sans-serif; }
+.manual-list .sub-rule { margin-left: 15px; color: var(--accent); }
 
 /* --- Frequency Tuner --- */
 .tuner-container { display: flex; align-items: center; gap: 16px; }
@@ -55,6 +61,17 @@ button:disabled { background: #555; color: #999; cursor: not-allowed; }
 .grid-cell { width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.2); font-size: 20px; font-family: monospace; }
 .grid-cell.highlight { background: var(--warning); color: #000; }
 .password-input-area { margin-top: 16px; display: flex; gap: 8px; }
+
+/* --- Logic Grid (Stage 4) --- */
+.logic-grid-container { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.logic-btn { width: 100px; height: 100px; border-radius: 12px; border: 3px solid rgba(255,255,255,0.3); cursor: pointer; transition: transform 0.1s ease; }
+.logic-btn:active { transform: scale(0.95); }
+.logic-btn.red { background-color: #c44; }
+.logic-btn.blue { background-color: #44c; }
+.logic-btn.green { background-color: #4c4; }
+.logic-btn.yellow { background-color: #cc4; }
+.logic-btn.flash { animation: flash-anim 0.4s ease; }
+@keyframes flash-anim { 50% { filter: brightness(2.5); } }
 
 @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
 @media(min-width:700px){ h1{font-size:28px} #gameArea{min-height:320px} }
