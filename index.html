@@ -3,47 +3,43 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
-  <title>Memory Link — Co-op Puzzle (Thai)</title>
+  <title>Defuse Duo — คู่หูกู้ระเบิด</title>
   <link rel="stylesheet" href="style.css">
-  <!-- Phaser (ถ้าต้องการเปลี่ยนไปใช้ Phaser ในอนาคต) -->
-  <!-- <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.min.js"></script> -->
-  <!-- Firebase modular SDK -->
   <script type="module" src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
-  <!-- We'll import specific SDKs inside script.js (as module) -->
 </head>
 <body>
   <div id="app">
     <header>
-      <h1>Memory Link — เกมคู่ใจ (ตัวอย่าง)</h1>
-      <p class="muted">เล่นแบบ 2 คน — สร้างห้องแล้วแชร์ลิงก์ให้แฟน</p>
+      <h1>Defuse Duo — คู่หูกู้ระเบิด</h1>
+      <p class="muted">ปฏิบัติการ 2 คน — สร้างภารกิจแล้วส่งรหัสให้คู่หู</p>
     </header>
 
     <main id="main">
       <section id="lobby">
         <div class="card">
-          <label>ชื่อผู้เล่น (แสดงบนห้อง)</label>
-          <input id="displayName" placeholder="ใส่ชื่อสั้น ๆ เช่น: พี่ควาย" maxlength="20">
+          <label>โค้ดเนม (แสดงในห้อง)</label>
+          <input id="displayName" placeholder="เช่น: CONTROL" maxlength="20">
 
           <div class="row">
-            <button id="createRoomBtn">สร้างห้องใหม่</button>
-            <button id="joinRoomBtn">เข้าร่วมด้วยรหัสห้อง</button>
+            <button id="createRoomBtn">สร้างภารกิจใหม่</button>
+            <button id="joinRoomBtn">เข้าร่วมภารกิจ</button>
           </div>
 
           <div id="joinArea" class="hidden">
-            <label>รหัสห้อง</label>
+            <label>รหัสภารกิจ</label>
             <input id="roomIdInput" placeholder="เช่น: ABC123">
-            <button id="joinConfirmBtn">เข้าร่วมห้อง</button>
+            <button id="joinConfirmBtn">ยืนยันเข้าร่วม</button>
           </div>
 
           <div id="roomInfo" class="hidden">
-            <p>รหัสห้อง: <strong id="roomIdLabel"></strong></p>
-            <p>สถานะ: <span id="roomStatus">รอผู้เล่น</span></p>
-            <p>ผู้เล่นในห้อง:</p>
+            <p>รหัสภารกิจ: <strong id="roomIdLabel"></strong></p>
+            <p>สถานะ: <span id="roomStatus">รอเจ้าหน้าที่</span></p>
+            <p>เจ้าหน้าที่ในทีม:</p>
             <ul id="playersList"></ul>
             <div id="ownerHint" class="muted"></div>
             <div class="row">
-              <button id="startGameBtn" class="hidden">เริ่มเกม (เจ้าของห้อง)</button>
-              <button id="leaveRoomBtn">ออกจากห้อง</button>
+              <button id="startGameBtn" class="hidden">เริ่มภารกิจ (ผู้เชี่ยวชาญ)</button>
+              <button id="leaveRoomBtn">ถอนตัวจากภารกิจ</button>
             </div>
           </div>
         </div>
@@ -53,20 +49,19 @@
         <div class="card">
           <h2 id="roleTitle">บทบาท</h2>
           <div id="gameArea">
-            <!-- UI ของผู้เล่นจะแสดงที่นี่ -->
+            <!-- UI ของเกมจะแสดงที่นี่ -->
           </div>
           <div id="gameFooter">
-            <p id="timerText">เวลา: --:--</p>
+            <p id="timerText" class="timer-critical">เวลา: --:--</p>
             <p id="hintText" class="hint"></p>
-            <button id="backToLobbyBtn">กลับไปลอบบี้</button>
+            <button id="backToLobbyBtn">กลับศูนย์บัญชาการ</button>
           </div>
         </div>
       </section>
 
     </main>
-
     <footer>
-      <p class="muted">ไฟล์: index.html, style.css, script.js | เชื่อม Firebase (Firestore + Anonymous Auth)</p>
+      <p class="muted">ไฟล์: index.html, style.css, script.js | เชื่อม Firebase</p>
     </footer>
   </div>
 

@@ -1,29 +1,73 @@
 :root{
-  --bg:#071028;
-  --card:#0b1220;
+  --bg:#1a1a1a;
+  --card:#2a2a2a;
   --text:#e6eef8;
   --muted:#9fb4c9;
-  --accent:#7dd3fc;
+  --accent:#34d399; /* สีเขียวมิ้นต์ */
+  --danger: #ef4444; /* สีแดง */
+  --warning: #f59e0b; /* สีเหลือง */
 }
 *{box-sizing:border-box}
-html,body{height:100%;margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,"Noto Sans Thai",sans-serif;background:linear-gradient(180deg,var(--bg),#001026);color:var(--text)}
+html,body{height:100%;margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,"Noto Sans Thai",sans-serif;background:var(--bg);color:var(--text)}
 #app{max-width:980px;margin:0 auto;padding:12px}
-header{margin-bottom:12px}
-h1{font-size:20px;margin:6px 0}
+header{margin-bottom:12px; text-align: center;}
+h1{font-size:24px;margin:6px 0; color: var(--accent);}
 .muted{color:var(--muted);font-size:13px}
-.card{background:rgba(255,255,255,0.03);padding:14px;border-radius:12px}
+.card{background:var(--card);padding:14px;border-radius:12px; border: 1px solid rgba(255,255,255,0.1);}
 label{font-size:13px;color:var(--muted);display:block;margin-bottom:6px}
-input[type="text"], input, select{width:100%;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02);color:var(--text);font-size:15px}
+input[type="text"], input, select{width:100%;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.2);color:var(--text);font-size:15px}
 button{padding:10px;border-radius:8px;border:0;background:var(--accent);color:#002;cursor:pointer;font-weight:600}
+button:disabled { background: #555; color: #999; cursor: not-allowed; }
 .row{display:flex;gap:8px;margin-top:10px}
 .row button{flex:1}
 .hidden{display:none}
 #playersList{margin:6px 0 0;padding-left:18px}
 #gameArea{min-height:260px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px}
-#timerText{font-weight:700}
-.hint{color:#c7ffd8}
+#timerText{font-weight:700; font-size: 18px;}
+.timer-critical { color: var(--danger); animation: pulse 1s infinite; }
+.hint{color:#a7f3d0}
 #gameFooter{margin-top:12px;display:flex;justify-content:space-between;align-items:center;gap:10px}
+
+/* --- Wire styles --- */
+.wire-container { display: flex; flex-direction: column; gap: 16px; width: 80%; }
+.wire {
+  background: #555;
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 24px;
+  text-align: center;
+  cursor: pointer;
+  border: 2px solid #777;
+  transition: all 0.2s ease;
+}
+.wire:hover { background: #666; }
+.wire.cut {
+  background: var(--danger);
+  border-color: var(--danger);
+  text-decoration: line-through;
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* --- Manual styles --- */
+.manual-list { list-style-type: none; padding: 0; width: 80%; }
+.manual-list li {
+  background: rgba(0,0,0,0.2);
+  margin-bottom: 8px;
+  padding: 10px;
+  border-radius: 6px;
+  font-size: 18px;
+}
+.manual-list li strong { color: var(--warning); font-size: 24px; }
+
+
+@keyframes pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.6; }
+  100% { opacity: 1; }
+}
+
 @media(min-width:700px){
-  h1{font-size:24px}
+  h1{font-size:28px}
   #gameArea{min-height:320px}
 }
