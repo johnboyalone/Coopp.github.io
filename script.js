@@ -580,7 +580,15 @@ function renderStage2(roomData) {
     info.innerHTML = '<b>คู่มือด่าน 2: การปรับเทียบพลังงาน</b>';
     const manual = document.createElement('div');
     manual.className = 'manual-list';
-    manual.innerHTML = `<p>ค่าพลังงานเริ่มต้น: <b>A: ${puzzleState.initialA}, B: ${puzzleState.initialB}, C: ${puzzleState.initialC}</b></p><p>เป้าหมาย: ทำให้ <b>ผลรวมของ A+B+C</b> เท่ากับ <b>${puzzleState.targetSum}</b></p><b>เงื่อนไขพิเศษที่ต้องทำตาม:</b><ul><li>ค่าพลังงานของแกน <b>A</b> ต้องมากกว่าแกน <b>C</b></li><li>ค่าพลังงานของแกน <b>B</b> ต้องเป็นเลขคู่ (ลงท้ายด้วย 0)</li><li>ห้ามให้ค่าพลังงานของแกนใดแกนหนึ่งติดลบ</li></ul>`;
+    manual.innerHTML = `<p>ค่าพลังงานเริ่มต้น: <b>A: ${puzzleState.initialA}, B: ${puzzleState.initialB}, C: ${puzzleState.initialC}</b></p>
+                        <p>เป้าหมาย: ทำให้ <b>ผลรวมของ A+B+C</b> เท่ากับ <b>${puzzleState.targetSum}</b></p>
+                        <b>เงื่อนไขพิเศษที่ต้องทำตาม:</b>
+                        <ul>
+                          <li>ค่าพลังงานของแกน <b>A</b> ต้องมากกว่าแกน <b>C</b></li>
+                          <li>ค่าพลังงานของแกน <b>B</b> ต้องเป็นเลขคู่ (ลงท้ายด้วย 0)</li>
+                          <li>ห้ามให้ค่าพลังงานของแกนใดแกนหนึ่งติดลบ</li>
+                        </ul>
+                        <p style="color: var(--danger-text);"><b>คำเตือน:</b> หากเจ้าหน้าที่ภาคสนามกดปุ่มรีเซ็ตฉุกเฉิน เวลาจะลดลง 20 วินาที และค่าพลังงานจะกลับไปที่ค่าเริ่มต้น</p>`;
     gameArea.append(info, manual);
   } else { // Field Agent
     const info = document.createElement('p');
@@ -609,11 +617,16 @@ function renderStage2(roomData) {
     const btnPlusB = document.createElement('button');
     btnPlusB.textContent = '+B';
     btnPlusB.title = '+10 to B, -10 to C';
+    const resetBtn = document.createElement('button');
+    resetBtn.id = 'resetCalibrationBtn';
+    resetBtn.className = 'btn-danger';
+    resetBtn.textContent = 'RESET';
+    resetBtn.title = 'รีเซ็ตค่าพลังงาน (เวลา -20 วินาที!)';
     const confirmBtn = document.createElement('button');
     confirmBtn.id = 'confirmCalibrationBtn';
     confirmBtn.textContent = 'SET';
     confirmBtn.disabled = true;
-    controlContainer.append(btnPlusA, btnMinusA, btnPlusB, confirmBtn);
+    controlContainer.append(btnPlusA, btnMinusA, btnPlusB, resetBtn, confirmBtn);
     gameArea.append(info, displayContainer, controlContainer);
     let currentA = puzzleState.initialA, currentB = puzzleState.initialB, currentC = puzzleState.initialC;
     const updateDisplays = () => {
@@ -630,6 +643,22 @@ function renderStage2(roomData) {
     btnMinusA.onclick = () => { currentA -= 10; currentC -= 10; updateDisplays(); };
     btnPlusB.onclick = () => { currentB += 10; currentC -= 10; updateDisplays(); };
     confirmBtn.onclick = () => handleCalibrationConfirm();
+    resetBtn.onclick = async () => {
+      resetBtn.disabled = true;
+      confirmBtn.disabled = true;
+      const roomRef = doc(db, 'rooms', currentRoomId);
+      const snap = await getDoc(roomRef);
+      if (snap.exists() && snap.data().status === 'playing') {
+        const currentTime = snap.data().state.timeLeft;
+        const newTime = Math.max(0, currentTime - 20);
+        await updateDoc(roomRef, { 'state.timeLeft': newTime });
+      }
+      currentA = puzzleState.initialA;
+      currentB = puzzleState.initialB;
+      currentC = puzzleState.initialC;
+      updateDisplays();
+      resetBtn.disabled = false;
+    };
     updateDisplays();
   }
 }
