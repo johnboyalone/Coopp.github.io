@@ -295,57 +295,63 @@ async function handleWireCut(cutWireId) {
 
 // --- Puzzle Generation (Stage 2 only) ---
 function generateStage2Puzzle() {
-    const initialA = (Math.floor(Math.random() * 5) + 3) * 10;
-    const initialB = (Math.floor(Math.random() * 5) + 3) * 10;
-    const initialC = (Math.floor(Math.random() * 5) + 3) * 10;
+    const condition = getRandomElement(stage2ConditionLibrary);
     
-    const stage2ConditionLibrary = [
-        { id: 'S2_C1', description: "<li>ค่าพลังงานของแกน <b>A</b> ต้องมากกว่าแกน <b>C</b></li><li>ค่าพลังงานของแกน <b>B</b> ต้องเป็นเลขคู่ (ลงท้ายด้วย 0)</li>", check: (a,b,c) => a > c && b % 20 === 0 },
-        { id: 'S2_C2', description: "<li>ค่าพลังงานของแกน <b>C</b> ต้องมากกว่าแกน <b>B</b></li><li>ค่าพลังงานของแกน <b>A</b> ต้องลงท้ายด้วย 50</li>", check: (a,b,c) => c > b && a % 50 === 0 },
-        { id: 'S2_C3', description: "<li>ค่าพลังงานต้องเรียงจากน้อยไปมาก (<b>A < B < C</b>)</li>", check: (a,b,c) => a < b && b < c },
-        { id: 'S2_C4', description: "<li>ผลรวมของ <b>A และ C</b> ต้องเท่ากับ <b>B</b> พอดี</li>", check: (a,b,c) => (a + c) === b },
-        { id: 'S2_C5', description: "<li>แกนใดแกนหนึ่งต้องมีค่าเป็น <b>100</b> พอดี</li><li>แกน <b>A</b> ต้องมีค่าน้อยที่สุด</li>", check: (a,b,c) => (a === 100 || b === 100 || c === 100) && a < b && a < c },
-    ];
-    const selectedCondition = getRandomElement(stage2ConditionLibrary);
-    
-    let targetA = initialA, targetB = initialB, targetC = initialC;
-    let validationAttempts = 0;
-    let solutionFound = false;
-    
-    // This loop tries to find a solvable combination by simulating random presses
-    while(validationAttempts < 50) {
-        targetA = initialA; targetB = initialB; targetC = initialC;
-        // Simulate 5 random presses to find a target state
-        for (let i = 0; i < 5; i++) {
-            const pressType = Math.floor(Math.random() * 3);
-            if (pressType === 0) { targetA += 10; targetB += 10; }
-            else if (pressType === 1) { targetA -= 10; targetC -= 10; }
-            else { targetB += 10; targetC -= 10; }
+    let attempts = 0;
+    while (attempts < 100) { // Try 100 times to find a valid puzzle
+        attempts++;
+        
+        // 1. Generate a potential WINNING state first
+        const targetA = 10 * (Math.floor(Math.random() * 8) + 1); // 10-80
+        const targetB = 10 * (Math.floor(Math.random() * 8) + 1); // 10-80
+        const targetC = 10 * (Math.floor(Math.random() * 8) + 1); // 10-80
+        
+        // Check if this winning state meets the condition
+        if (!condition.check(targetA, targetB, targetC)) {
+            continue; // If not, try generating a new winning state
         }
-        // Check if the resulting state is valid (non-negative and meets the condition)
-        if (targetA >= 0 && targetB >= 0 && targetC >= 0 && selectedCondition.check(targetA, targetB, targetC)) {
-            solutionFound = true;
-            break;
-        }
-        validationAttempts++;
-    }
-    
-    if (!solutionFound) { 
-        // This is a fallback in case the random generation fails, ensuring the game doesn't crash.
-        // It creates a simple, guaranteed solvable puzzle.
-        console.warn("Could not generate a random Stage 2 puzzle, using fallback.");
-        const fallbackCondition = stage2ConditionLibrary[2]; // A < B < C
-        return { 
-            initialA: 30, initialB: 40, initialC: 50, 
-            targetSum: 150, // 30+50+70
-            condition: { id: fallbackCondition.id, description: fallbackCondition.description } 
-        };
-    }
-    
-    const targetSum = targetA + targetB + targetC;
-    return { initialA, initialB, initialC, targetSum, condition: { id: selectedCondition.id, description: selectedCondition.description } };
-}
+        
+        const targetSum = targetA + targetB + targetC;
 
+        // 2. "Walk backwards" to find the INITIAL state
+        let initialA = targetA;
+        let initialB = targetB;
+        let initialC = targetC;
+        
+        const reverseMoves = [
+            (a, b, c) => [a - 10, b - 10, c], // Reverse of +A
+            (a, b, c) => [a + 10, b, c + 10], // Reverse of -A
+            (a, b, c) => [a, b - 10, c + 10]  // Reverse of +B
+        ];
+        
+        // Apply 1 to 3 reverse moves
+        const movesToMake = Math.floor(Math.random() * 3) + 1; 
+        for (let i = 0; i < movesToMake; i++) {
+            const randomReverseMove = getRandomElement(reverseMoves);
+            [initialA, initialB, initialC] = randomReverseMove(initialA, initialB, initialC);
+        }
+
+        // 3. Validate the generated initial state
+        if (initialA > 0 && initialB > 0 && initialC > 0 && (initialA + initialB + initialC) !== targetSum) {
+            // SUCCESS! We found a valid, solvable puzzle.
+            return {
+                initialA,
+                initialB,
+                initialC,
+                targetSum,
+                condition: { id: condition.id, description: condition.description }
+            };
+        }
+    }
+
+    // This part should almost never be reached, but it's a final safety net.
+    console.error("CRITICAL: Could not generate a Stage 2 puzzle even with solution-first method. Using emergency fallback.");
+    return { 
+        initialA: 20, initialB: 50, initialC: 70, 
+        targetSum: 160, 
+        condition: { id: 'S2_C3', description: 'ค่าพลังงานต้องเรียงจากน้อยไปมาก (A < B < C)' } 
+    };
+}
 
 // --- Rendering & Handling (Stage 2 only) ---
 function renderStage2(roomData) {
