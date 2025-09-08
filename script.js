@@ -507,7 +507,7 @@ function generateFullPuzzle(roomId) {
 }
 // =================================================================
 // Defuse Duo - script.js (Updated with New Stage 3)
-// PART 3 OF 3
+// PART 3 OF 3 - CORRECTED AND COMPLETE
 // =================================================================
 
 // -----------------------------------------------------------------
@@ -524,7 +524,8 @@ function showGame(roomData){
   startTimer(roomData);
 
   if (roomData.state && roomData.state.puzzle) {
-    if (renderedStage !== roomData.state.currentStage) {
+    // Force re-render if the stage number is the same but a puzzle reset happened (e.g. on failure)
+    if (renderedStage !== roomData.state.currentStage || gameArea.innerHTML === '') {
       renderCurrentStage(roomData);
       renderedStage = roomData.state.currentStage;
     }
@@ -534,7 +535,7 @@ function showGame(roomData){
 }
 
 function renderCurrentStage(roomData) {
-  gameArea.innerHTML = '';
+  gameArea.innerHTML = ''; // Clear previous stage
   const state = roomData.state;
   
   const stageIndicator = document.createElement('div');
@@ -614,6 +615,8 @@ async function handleWireCut(cutWireId) {
             await updateDoc(roomRef, { status: 'finished', 'state.defused': false, 'state.strikes': newStrikes, 'state.timeLeft': newTime });
         } else {
             await updateDoc(roomRef, { 'state.strikes': newStrikes, 'state.timeLeft': newTime });
+            // Re-render to show strike feedback if needed
+            renderedStage = 0;
         }
     } else {
         await updateDoc(roomRef, { 'state.currentStage': 2 });
@@ -636,7 +639,8 @@ function renderStage2(roomData) {
                           <li>ค่าพลังงานของแกน <b>A</b> ต้องมากกว่าแกน <b>C</b></li>
                           <li>ค่าพลังงานของแกน <b>B</b> ต้องเป็นเลขคู่ (ลงท้ายด้วย 0)</li>
                           <li>ห้ามให้ค่าพลังงานของแกนใดแกนหนึ่งติดลบ</li>
-                        </ul>`;
+                        </ul>
+                        <p style="color: var(--danger-text);"><b>คำเตือน:</b> หากเจ้าหน้าที่ภาคสนามกดปุ่มรีเซ็ตฉุกเฉิน เวลาจะลดลง 20 วินาที และค่าพลังงานจะกลับไปที่ค่าเริ่มต้น</p>`;
     gameArea.append(info, manual);
   } else { // Field Agent
     const info = document.createElement('p');
@@ -644,9 +648,70 @@ function renderStage2(roomData) {
     info.textContent = 'ปรับเทียบแกนพลังงานตามคำสั่งของผู้เชี่ยวชาญ';
     const displayContainer = document.createElement('div');
     displayContainer.className = 'reactor-display-container';
-    // ... (rest of stage 2 rendering is unchanged)
+    const displayA = document.createElement('div');
+    displayA.className = 'reactor-display';
+    displayA.innerHTML = `<span>A</span><strong id="valA">${puzzleState.initialA}</strong>`;
+    const displayB = document.createElement('div');
+    displayB.className = 'reactor-display';
+    displayB.innerHTML = `<span>B</span><strong id="valB">${puzzleState.initialB}</strong>`;
+    const displayC = document.createElement('div');
+    displayC.className = 'reactor-display';
+    displayC.innerHTML = `<span>C</span><strong id="valC">${puzzleState.initialC}</strong>`;
+    displayContainer.append(displayA, displayB, displayC);
+    const controlContainer = document.createElement('div');
+    controlContainer.className = 'reactor-controls';
+    const btnPlusA = document.createElement('button');
+    btnPlusA.textContent = '+A';
+    btnPlusA.title = '+10 to A, +10 to B';
+    const btnMinusA = document.createElement('button');
+    btnMinusA.textContent = '-A';
+    btnMinusA.title = '-10 to A, -10 to C';
+    const btnPlusB = document.createElement('button');
+    btnPlusB.textContent = '+B';
+    btnPlusB.title = '+10 to B, -10 to C';
+    const resetBtn = document.createElement('button');
+    resetBtn.id = 'resetCalibrationBtn';
+    resetBtn.className = 'btn-danger';
+    resetBtn.textContent = 'RESET';
+    resetBtn.title = 'รีเซ็ตค่าพลังงาน (เวลา -20 วินาที!)';
+    const confirmBtn = document.createElement('button');
+    confirmBtn.id = 'confirmCalibrationBtn';
+    confirmBtn.textContent = 'SET';
+    confirmBtn.disabled = true;
+    controlContainer.append(btnPlusA, btnMinusA, btnPlusB, resetBtn, confirmBtn);
+    gameArea.append(info, displayContainer, controlContainer);
     let currentA = puzzleState.initialA, currentB = puzzleState.initialB, currentC = puzzleState.initialC;
-    // ...
+    const updateDisplays = () => {
+      document.getElementById('valA').textContent = currentA;
+      document.getElementById('valB').textContent = currentB;
+      document.getElementById('valC').textContent = currentC;
+      const isSumCorrect = (currentA + currentB + currentC) === puzzleState.targetSum;
+      const isACorrect = currentA > currentC;
+      const isBCorrect = currentB % 20 === 0;
+      const isNotNegative = currentA >= 0 && currentB >= 0 && currentC >= 0;
+      confirmBtn.disabled = !(isSumCorrect && isACorrect && isBCorrect && isNotNegative);
+    };
+    btnPlusA.onclick = () => { currentA += 10; currentB += 10; updateDisplays(); };
+    btnMinusA.onclick = () => { currentA -= 10; currentC -= 10; updateDisplays(); };
+    btnPlusB.onclick = () => { currentB += 10; currentC -= 10; updateDisplays(); };
+    confirmBtn.onclick = () => handleCalibrationConfirm();
+    resetBtn.onclick = async () => {
+      resetBtn.disabled = true;
+      confirmBtn.disabled = true;
+      const roomRef = doc(db, 'rooms', currentRoomId);
+      const snap = await getDoc(roomRef);
+      if (snap.exists() && snap.data().status === 'playing') {
+        const currentTime = snap.data().state.timeLeft;
+        const newTime = Math.max(0, currentTime - 20);
+        await updateDoc(roomRef, { 'state.timeLeft': newTime });
+      }
+      currentA = puzzleState.initialA;
+      currentB = puzzleState.initialB;
+      currentC = puzzleState.initialC;
+      updateDisplays();
+      resetBtn.disabled = false;
+    };
+    updateDisplays();
   }
 }
 
@@ -812,7 +877,40 @@ function renderStage4(roomData) {
     rule2.innerHTML = `<b>กฎข้อที่ 2: กฎพิเศษ</b><br>${puzzleState.hasNumberInRoomId ? 'รหัสภารกิจมีตัวเลข: ลำดับการกดทั้งหมดต้องย้อนกลับ (Reverse)' : 'รหัสภารกิจไม่มีตัวเลข: ไม่มีกฎพิเศษ'}`;
     gameArea.append(info, rule1, rule2);
   } else { // Field Agent
-    // ... (rest of stage 4 rendering is unchanged)
+    const info = document.createElement('p');
+    info.className = 'muted';
+    info.textContent = 'จดจำลำดับการกระพริบ แล้วรายงานให้ผู้เชี่ยวชาญทราบ!';
+    const gridContainer = document.createElement('div');
+    gridContainer.className = 'logic-grid-container';
+    const buttons = {};
+    ['red', 'blue', 'green', 'yellow'].forEach(color => {
+        const btn = document.createElement('button');
+        btn.className = `logic-btn ${color}`;
+        btn.dataset.color = color;
+        btn.onclick = () => handleLogicGridPress(color);
+        gridContainer.appendChild(btn);
+        buttons[color] = btn;
+    });
+    gameArea.append(info, gridContainer);
+    setTimeout(() => {
+        let i = 0;
+        const interval = setInterval(() => {
+            if (i >= puzzleState.flashSequence.length) {
+                clearInterval(interval);
+                return;
+            }
+            const colorToFlash = puzzleState.flashSequence[i];
+            if (buttons[colorToFlash]) {
+                buttons[colorToFlash].classList.add('flash');
+                setTimeout(() => {
+                    if (buttons[colorToFlash]) {
+                        buttons[colorToFlash].classList.remove('flash');
+                    }
+                }, 400);
+            }
+            i++;
+        }, 600);
+    }, 1500);
   }
 }
 
