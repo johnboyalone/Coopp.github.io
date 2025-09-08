@@ -294,17 +294,25 @@ async function handleWireCut(cutWireId) {
 // =================================================================
 
 // --- Puzzle Generation (Stage 2 only) ---
+const stage2ConditionLibrary = [
+    { id: 'S2_C1', description: 'ค่าพลังงาน A ต้องมากกว่า C (A > C)', check: (a, b, c) => a > c },
+    { id: 'S2_C2', description: 'ค่าพลังงาน B ต้องเป็นค่ากลาง (A < B < C หรือ C < B < A)', check: (a, b, c) => (a < b && b < c) || (c < b && b < a) },
+    { id: 'S2_C3', description: 'ค่าพลังงานต้องเรียงจากน้อยไปมาก (A < B < C)', check: (a, b, c) => a < b && b < c },
+    { id: 'S2_C4', description: 'ค่าพลังงานทั้งหมดต้องเท่ากัน (A = B = C)', check: (a, b, c) => a === b && b === c },
+    { id: 'S2_C5', description: 'ผลรวมของ A และ C ต้องเท่ากับ B (A + C = B)', check: (a, b, c) => a + c === b }
+];
+
 function generateStage2Puzzle() {
     const condition = getRandomElement(stage2ConditionLibrary);
     
     let attempts = 0;
-    while (attempts < 100) { // Try 100 times to find a valid puzzle
+    while (attempts < 200) { // Try 200 times to find a valid puzzle
         attempts++;
         
         // 1. Generate a potential WINNING state first
-        const targetA = 10 * (Math.floor(Math.random() * 8) + 1); // 10-80
-        const targetB = 10 * (Math.floor(Math.random() * 8) + 1); // 10-80
-        const targetC = 10 * (Math.floor(Math.random() * 8) + 1); // 10-80
+        const targetA = 10 * (Math.floor(Math.random() * 8) + 2); // 20-90
+        const targetB = 10 * (Math.floor(Math.random() * 8) + 2); // 20-90
+        const targetC = 10 * (Math.floor(Math.random() * 8) + 2); // 20-90
         
         // Check if this winning state meets the condition
         if (!condition.check(targetA, targetB, targetC)) {
@@ -353,115 +361,110 @@ function generateStage2Puzzle() {
     };
 }
 
+
 // --- Rendering & Handling (Stage 2 only) ---
 function renderStage2(roomData) {
-  const puzzleState = roomData.state.puzzle.stage2;
-  if (localRole === 'Tech Expert') {
-    const info = document.createElement('p');
-    info.className = 'muted';
-    info.innerHTML = '<b>คู่มือด่าน 2: การปรับเทียบพลังงาน</b>';
-    const manual = document.createElement('div');
-    manual.className = 'manual-list';
-    manual.innerHTML = `<p>ค่าพลังงานเริ่มต้น: <b>A: ${puzzleState.initialA}, B: ${puzzleState.initialB}, C: ${puzzleState.initialC}</b></p>
-                        <p>เป้าหมาย: ทำให้ <b>ผลรวมของ A+B+C</b> เท่ากับ <b>${puzzleState.targetSum}</b></p>
-                        <b>เงื่อนไขพิเศษที่ต้องทำตาม:</b>
-                        <ul>${puzzleState.condition.description}</ul>
-                        <p style="color: var(--danger-text);"><b>คำเตือน:</b> หากเจ้าหน้าที่ภาคสนามกดปุ่มรีเซ็ตฉุกเฉิน เวลาจะลดลง 20 วินาที และค่าพลังงานจะกลับไปที่ค่าเริ่มต้น</p>`;
-    gameArea.append(info, manual);
-  } else { // Field Agent
-    const info = document.createElement('p');
-    info.className = 'muted';
-    info.textContent = 'ปรับเทียบแกนพลังงานตามคำสั่งของผู้เชี่ยวชาญ';
-    
-    const displayContainer = document.createElement('div');
-    displayContainer.className = 'reactor-display-container';
-    const displayA = document.createElement('div');
-    displayA.className = 'reactor-display';
-    displayA.innerHTML = `<span>A</span><strong id="valA">${puzzleState.initialA}</strong>`;
-    const displayB = document.createElement('div');
-    displayB.className = 'reactor-display';
-    displayB.innerHTML = `<span>B</span><strong id="valB">${puzzleState.initialB}</strong>`;
-    const displayC = document.createElement('div');
-    displayC.className = 'reactor-display';
-    displayC.innerHTML = `<span>C</span><strong id="valC">${puzzleState.initialC}</strong>`;
-    displayContainer.append(displayA, displayB, displayC);
-    
-    const controlContainer = document.createElement('div');
-    controlContainer.className = 'reactor-controls';
-    const btnPlusA = document.createElement('button');
-    btnPlusA.textContent = '+A';
-    btnPlusA.title = '+10 to A, +10 to B';
-    const btnMinusA = document.createElement('button');
-    btnMinusA.textContent = '-A';
-    btnMinusA.title = '-10 to A, -10 to C';
-    const btnPlusB = document.createElement('button');
-    btnPlusB.textContent = '+B';
-    btnPlusB.title = '+10 to B, -10 to C';
-    const resetBtn = document.createElement('button');
-    resetBtn.id = 'resetCalibrationBtn';
-    resetBtn.className = 'btn-danger';
-    resetBtn.textContent = 'RESET';
-    resetBtn.title = 'รีเซ็ตค่าพลังงาน (เวลา -20 วินาที!)';
-    const confirmBtn = document.createElement('button');
-    confirmBtn.id = 'confirmCalibrationBtn';
-    confirmBtn.textContent = 'SET';
-    confirmBtn.disabled = true;
-    controlContainer.append(btnPlusA, btnMinusA, btnPlusB, resetBtn, confirmBtn);
-    
-    gameArea.append(info, displayContainer, controlContainer);
-    
-    let currentA = puzzleState.initialA, currentB = puzzleState.initialB, currentC = puzzleState.initialC;
+    const puzzleState = roomData.state.puzzle.stage2;
+    const playerState = roomData.state.powerLevels;
 
-    const stage2ConditionLibrary = [
-        { id: 'S2_C1', check: (a,b,c) => a > c && b % 20 === 0 },
-        { id: 'S2_C2', check: (a,b,c) => c > b && a % 50 === 0 },
-        { id: 'S2_C3', check: (a,b,c) => a < b && b < c },
-        { id: 'S2_C4', check: (a,b,c) => (a + c) === b },
-        { id: 'S2_C5', check: (a,b,c) => (a === 100 || b === 100 || c === 100) && a < b && a < c },
-    ];
-    const conditionCheck = stage2ConditionLibrary.find(c => c.id === puzzleState.condition.id).check;
-
-    const updateDisplays = () => {
-      document.getElementById('valA').textContent = currentA;
-      document.getElementById('valB').textContent = currentB;
-      document.getElementById('valC').textContent = currentC;
-      const isSumCorrect = (currentA + currentB + currentC) === puzzleState.targetSum;
-      const isConditionMet = conditionCheck(currentA, currentB, currentC);
-      const isNotNegative = currentA >= 0 && currentB >= 0 && currentC >= 0;
-      confirmBtn.disabled = !(isSumCorrect && isConditionMet && isNotNegative);
-    };
-    
-    btnPlusA.onclick = () => { currentA += 10; currentB += 10; updateDisplays(); };
-    btnMinusA.onclick = () => { currentA -= 10; currentC -= 10; updateDisplays(); };
-    btnPlusB.onclick = () => { currentB += 10; currentC -= 10; updateDisplays(); };
-    confirmBtn.onclick = () => handleCalibrationConfirm();
-    resetBtn.onclick = async () => {
-      resetBtn.disabled = true;
-      confirmBtn.disabled = true;
-      const roomRef = doc(db, 'rooms', currentRoomId);
-      const snap = await getDoc(roomRef);
-      if (snap.exists() && snap.data().status === 'playing') {
-        const currentTime = snap.data().state.timeLeft;
-        const newTime = Math.max(0, currentTime - 20);
-        await updateDoc(roomRef, { 'state.timeLeft': newTime });
-      }
-      currentA = puzzleState.initialA;
-      currentB = puzzleState.initialB;
-      currentC = puzzleState.initialC;
-      updateDisplays();
-      resetBtn.disabled = false;
-    };
-    
-    updateDisplays();
-  }
+    if (localRole === 'Tech Expert') {
+        const info = document.createElement('p');
+        info.className = 'muted';
+        info.innerHTML = '<b>คู่มือด่าน 2: การปรับเทียบพลังงาน</b><br>สั่งการให้เจ้าหน้าที่ภาคสนามปรับค่าพลังงานให้ตรงตามเป้าหมายและเงื่อนไข';
+        
+        const manualList = document.createElement('ul');
+        manualList.className = 'manual-list';
+        manualList.innerHTML = `
+            <li>ค่าพลังงานเริ่มต้น: A: ${puzzleState.initialA}, B: ${puzzleState.initialB}, C: ${puzzleState.initialC}</li>
+            <li>เป้าหมาย: ทำให้ <b>ผลรวมของ A+B+C</b> เท่ากับ <b>${puzzleState.targetSum}</b></li>
+            <li>เงื่อนไขพิเศษที่ต้องทำตาม: <b>${puzzleState.condition.description}</b></li>
+            <li style="color: var(--warning);">คำเตือน: หากเจ้าหน้าที่ภาคสนามกดปุ่มรีเซ็ตฉุกเฉิน เวลาจะลดลง 20 วินาที และค่าพลังงานจะกลับไปที่ค่าเริ่มต้น</li>
+        `;
+        gameArea.append(info, manualList);
+    } else { // Field Agent
+        const info = document.createElement('p');
+        info.className = 'muted';
+        info.textContent = 'ปรับเทียบแกนพลังงานตามคำสั่งของผู้เชี่ยวชาญ';
+        
+        const displayContainer = document.createElement('div');
+        displayContainer.className = 'power-display-container';
+        displayContainer.innerHTML = `
+            <div class="power-display">A<span id="valA">${playerState.a}</span></div>
+            <div class="power-display">B<span id="valB">${playerState.b}</span></div>
+            <div class="power-display">C<span id="valC">${playerState.c}</span></div>
+        `;
+        
+        const buttonContainer = document.createElement('div');
+        buttonContainer.className = 'power-button-container';
+        buttonContainer.innerHTML = `
+            <button id="btnPlusA">+A</button>
+            <button id="btnMinusA">-A</button>
+            <button id="btnPlusB">+B</button>
+            <button id="btnReset" class="btn-warning">RESET</button>
+            <button id="btnSet" class="btn-accent">SET</button>
+        `;
+        
+        gameArea.append(info, displayContainer, buttonContainer);
+        
+        document.getElementById('btnPlusA').onclick = () => handlePowerChange({ a: 10, b: 10, c: 0 });
+        document.getElementById('btnMinusA').onclick = () => handlePowerChange({ a: -10, b: 0, c: -10 });
+        document.getElementById('btnPlusB').onclick = () => handlePowerChange({ a: 0, b: 10, c: -10 });
+        document.getElementById('btnReset').onclick = handlePowerReset;
+        document.getElementById('btnSet').onclick = handlePowerSet;
+    }
 }
 
-async function handleCalibrationConfirm() {
+async function handlePowerChange(delta) {
     const roomRef = doc(db, 'rooms', currentRoomId);
-    const currentSnap = await getDoc(roomRef);
-    if (currentSnap.data().status !== 'playing') return;
-    await updateDoc(roomRef, { 'state.currentStage': 3 });
+    const snap = await getDoc(roomRef);
+    if (!snap.exists() || snap.data().status !== 'playing') return;
+    
+    const currentLevels = snap.data().state.powerLevels;
+    const newLevels = {
+        a: Math.max(0, currentLevels.a + delta.a),
+        b: Math.max(0, currentLevels.b + delta.b),
+        c: Math.max(0, currentLevels.c + delta.c)
+    };
+    await updateDoc(roomRef, { 'state.powerLevels': newLevels });
 }
+
+async function handlePowerReset() {
+    if (!confirm('การรีเซ็ตฉุกเฉินจะทำให้เวลาลดลง 20 วินาที! ยืนยันหรือไม่?')) return;
+    
+    const roomRef = doc(db, 'rooms', currentRoomId);
+    const snap = await getDoc(roomRef);
+    if (!snap.exists() || snap.data().status !== 'playing') return;
+    
+    const state = snap.data().state;
+    const puzzle = state.puzzle.stage2;
+    const newTime = Math.max(0, state.timeLeft - 20);
+    
+    await updateDoc(roomRef, {
+        'state.timeLeft': newTime,
+        'state.powerLevels': { a: puzzle.initialA, b: puzzle.initialB, c: puzzle.initialC }
+    });
+}
+
+async function handlePowerSet() {
+    const roomRef = doc(db, 'rooms', currentRoomId);
+    const snap = await getDoc(roomRef);
+    if (!snap.exists() || snap.data().status !== 'playing') return;
+    
+    const state = snap.data().state;
+    const puzzle = state.puzzle.stage2;
+    const currentLevels = state.powerLevels;
+    
+    const currentSum = currentLevels.a + currentLevels.b + currentLevels.c;
+    const isSumCorrect = (currentSum === puzzle.targetSum);
+    const isConditionCorrect = puzzle.condition.check(currentLevels.a, currentLevels.b, currentLevels.c);
+    
+    if (isSumCorrect && isConditionCorrect) {
+        await updateDoc(roomRef, { 'state.currentStage': 3 });
+    } else {
+        await updateDoc(roomRef, { status: 'finished', 'state.defused': false });
+    }
+}
+
 // =================================================================
 // Defuse Duo - script.js (STAGE-BASED SPLIT - 3/4)
 // Stage 3 Logic (Generation, Rendering, Handling)
