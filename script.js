@@ -1,11 +1,7 @@
 // =================================================================
 // Defuse Duo - script.js (HIGH REPLAYABILITY UPDATE)
-// PART 1 OF 3
+// PART 1 OF 3 - CORRECTED
 // =================================================================
-
-// -----------------------------------------------------------------
-// SECTION 1: MAIN CONTROL, LOBBY, AND FIREBASE SETUP
-// -----------------------------------------------------------------
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
@@ -13,6 +9,7 @@ import {
   getFirestore, doc, setDoc, getDoc, onSnapshot, updateDoc, arrayUnion, arrayRemove, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
 
+/* ==== ใส่ firebaseConfig ของคุณที่นี่ ==== */
 const firebaseConfig = {
   apiKey: "AIzaSyDceng5cmITvUqqTuMFSja0y4PSkhFmrmg",
   authDomain: "gemini-co-op-game.firebaseapp.com",
@@ -21,12 +18,17 @@ const firebaseConfig = {
   messagingSenderId: "387010923200",
   appId: "1:387010923200:web:082a20a7b94a59aea9bb25"
 };
+/* ======================================================= */
+
+// -----------------------------------------------------------------
+// SECTION 1: INITIALIZATION AND LOBBY LOGIC
+// -----------------------------------------------------------------
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// --- UI Refs ---
+// --- UI refs
 const createRoomBtn = document.getElementById('createRoomBtn');
 const joinRoomBtn = document.getElementById('joinRoomBtn');
 const joinArea = document.getElementById('joinArea');
@@ -40,25 +42,23 @@ const startGameBtn = document.getElementById('startGameBtn');
 const leaveRoomBtn = document.getElementById('leaveRoomBtn');
 const displayNameInput = document.getElementById('displayName');
 const ownerHint = document.getElementById('ownerHint');
+
 const mainLobby = document.getElementById('lobby');
 const sectionGame = document.getElementById('game');
 const roleTitle = document.getElementById('roleTitle');
 const gameArea = document.getElementById('gameArea');
 const timerText = document.getElementById('timerText');
-const hintText = document.getElementById('hintText');
 const backToLobbyBtn = document.getElementById('backToLobbyBtn');
 
-// --- Game State ---
 let me = null;
 let currentRoomId = null;
 let roomUnsubscribe = null;
 let localRole = null;
 let ownerUid = null;
 let countdownInterval = null;
-let isGameUIShown = false;
 let renderedStage = 0;
 
-// --- Helper ---
+// --- Helper: Create short room ID ---
 function makeRoomId(len = 6){
   const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
   let out = '';
@@ -66,59 +66,64 @@ function makeRoomId(len = 6){
   return out;
 }
 
-// --- Auth Handling ---
-createRoomBtn.disabled = true;
-createRoomBtn.textContent = 'ตรวจสอบสัญญาณ...';
-joinRoomBtn.disabled = true;
+// --- Firebase Auth ---
+function initializeAuth() {
+    onAuthStateChanged(auth, (user) => {
+        if (user) {
+            me = { uid: user.uid, name: (displayNameInput.value || 'ผู้เล่น') };
+            console.log('Signed in:', me.uid);
+            createRoomBtn.disabled = false;
+            joinRoomBtn.disabled = false;
+            createRoomBtn.textContent = 'สร้างภารกิจใหม่';
+            joinRoomBtn.textContent = 'เข้าร่วมด้วยรหัส';
+        } else {
+            me = null;
+            signInAnonymously(auth).catch((err)=>{
+                console.error('Auth error', err);
+                alert('ไม่สามารถเชื่อมต่อเพื่อยืนยันตัวตนได้');
+            });
+        }
+    });
+}
 
-signInAnonymously(auth).catch((err)=>{
-  console.error('Auth error', err);
-  createRoomBtn.textContent = 'การเชื่อมต่อล้มเหลว';
-  joinRoomBtn.textContent = 'การเชื่อมต่อล้มเหลว';
-});
-
-onAuthStateChanged(auth, (user) => {
-  if (user) {
-    me = { uid: user.uid };
-    createRoomBtn.disabled = false;
-    createRoomBtn.textContent = 'สร้างภารกิจใหม่';
-    joinRoomBtn.disabled = false;
-  } else {
-    me = null;
-    createRoomBtn.disabled = true;
-    joinRoomBtn.disabled = true;
-    createRoomBtn.textContent = 'โปรดรีเฟรช';
-  }
-});
-
-// --- Lobby Event Listeners ---
+// --- Lobby Event Handlers ---
 createRoomBtn.addEventListener('click', async ()=>{
-  if (!me) return alert('ยังไม่เชื่อมต่อศูนย์บัญชาการ (รอสักครู่แล้วลองใหม่)');
-  me.name = displayNameInput.value || ('CONTROL-' + me.uid.slice(0,4));
-  
-  try {
-    const roomId = makeRoomId(6);
-    const roomRef = doc(db, 'rooms', roomId);
-    const puzzle = generateFullPuzzle(roomId);
-    const initial = {
-      createdAt: serverTimestamp(),
-      owner: me.uid,
-      players: [{ uid: me.uid, name: me.name }],
-      status: 'waiting',
-      state: {
-        puzzle: puzzle,
-        currentStage: 1,
-        logicGrid_playerPresses: [],
-        defused: false,
-        timeLeft: 300 // 5 minutes
-      }
-    };
-    await setDoc(roomRef, initial);
-    enterRoom(roomId);
-  } catch (error) {
-    console.error("Error creating room:", error);
-    alert("เกิดข้อผิดพลาดในการสร้างห้อง! กรุณาตรวจสอบ Console");
-  }
+    if (!me) return alert('ยังไม่เชื่อมต่อ Firebase (รอสักครู่แล้วลองใหม่)');
+    createRoomBtn.disabled = true;
+    createRoomBtn.textContent = 'กำลังสร้าง...';
+
+    try {
+        me.name = displayNameInput.value || ('ผู้เล่น-' + me.uid.slice(0,4));
+        const roomId = makeRoomId(6);
+        const roomRef = doc(db, 'rooms', roomId);
+
+        // **** FIXED HERE: Call the correct, new function name ****
+        const puzzle = generateAndValidatePuzzle(roomId);
+        if (!puzzle) {
+            throw new Error("ไม่สามารถสร้างปริศนาที่สมบูรณ์ได้ กรุณาลองอีกครั้ง");
+        }
+
+        const initial = {
+            createdAt: serverTimestamp(),
+            owner: me.uid,
+            players: [{ uid: me.uid, name: me.name }],
+            status: 'waiting',
+            state: {
+                currentStage: 1,
+                defused: false,
+                timeLeft: 300,
+                puzzle: puzzle,
+                logicGrid_playerPresses: []
+            }
+        };
+        await setDoc(roomRef, initial);
+        enterRoom(roomId);
+    } catch (error) {
+        console.error("Error creating room:", error);
+        alert('เกิดข้อผิดพลาดในการสร้างห้อง: ' + error.message);
+        createRoomBtn.disabled = false;
+        createRoomBtn.textContent = 'สร้างภารกิจใหม่';
+    }
 });
 
 joinRoomBtn.addEventListener('click', ()=>{
@@ -127,31 +132,29 @@ joinRoomBtn.addEventListener('click', ()=>{
 
 joinConfirmBtn.addEventListener('click', async ()=>{
   const rid = (roomIdInput.value || '').trim().toUpperCase();
-  if (!rid) return alert('กรุณาใส่รหัสภารกิจ');
+  if (!rid) return alert('กรุณาใส่รหัสห้อง');
   const ref = doc(db, 'rooms', rid);
   const snap = await getDoc(ref);
-  if (!snap.exists()) return alert('ไม่พบภารกิจนี้');
+  if (!snap.exists()) return alert('ไม่พบห้องนี้');
   const data = snap.data();
   if (data.players && data.players.length >= 2 && !data.players.find(p => p.uid === me.uid)) {
-    return alert('ทีมเต็มแล้ว');
+    return alert('ห้องเต็มแล้ว');
   }
-  me.name = displayNameInput.value || ('AGENT-' + me.uid.slice(0,4));
+  me.name = displayNameInput.value || ('ผู้เล่น-' + me.uid.slice(0,4));
   await updateDoc(ref, { players: arrayUnion({ uid: me.uid, name: me.name }) });
   enterRoom(rid);
 });
 
 leaveRoomBtn.addEventListener('click', async ()=>{
   if (!currentRoomId) return;
-  const ref = doc(db, 'rooms', currentRoomId);
-  await updateDoc(ref, { players: arrayRemove({ uid: me.uid, name: me.name }) }).catch(()=>{});
-  cleanupRoom();
+  await cleanupRoom();
   showLobby();
 });
 
 startGameBtn.addEventListener('click', async ()=>{
   if (!currentRoomId) return;
   const ref = doc(db, 'rooms', currentRoomId);
-  await updateDoc(ref, { status: 'playing' });
+  await updateDoc(ref, { status: 'playing', 'state.timeLeft': 300 });
 });
 
 backToLobbyBtn.addEventListener('click', ()=>{
@@ -162,64 +165,53 @@ backToLobbyBtn.addEventListener('click', ()=>{
   }
 });
 
-// --- Room & Game State Management ---
+// --- Room Management ---
 async function enterRoom(roomId){
   currentRoomId = roomId;
   const ref = doc(db, 'rooms', roomId);
 
   roomUnsubscribe = onSnapshot(ref, (snap)=>{
     if (!snap.exists()){
-      alert('ภารกิจถูกยกเลิก');
-      cleanupRoom();
-      showLobby();
+      alert('ห้องถูกลบหรือไม่พบห้องอีกต่อไป');
+      cleanupAndShowLobby();
       return;
     }
     const data = snap.data();
     renderRoomInfo(roomId, data);
+    
+    const myPlayerIndex = data.players.findIndex(p => p.uid === me.uid);
+    localRole = (myPlayerIndex === 0) ? 'Tech Expert' : 'Field Agent';
+    ownerUid = data.owner;
 
-    if (data.status === 'playing') {
-      if (!isGameUIShown) {
-        localRole = (data.owner === me.uid) ? 'Tech Expert' : 'Field Agent';
-        ownerUid = data.owner;
-        isGameUIShown = true;
-      }
+    if (data.status === 'playing' || data.status === 'finished') {
       showGame(data);
-    } else if (data.status === 'finished') {
-      if (isGameUIShown) {
-        showFinishedScreen(data);
-      }
-    } else if (data.status === 'waiting') {
-        showLobbyRoomView();
+    } else {
+      showLobbyRoomView();
     }
   });
-
   showLobbyRoomView();
 }
 
 function renderRoomInfo(roomId, data){
   roomIdLabel.textContent = roomId;
-  roomStatus.textContent = data.status || 'รอเจ้าหน้าที่';
+  roomStatus.textContent = data.status || 'รอผู้เล่น';
   playersList.innerHTML = '';
   (data.players || []).forEach(p => {
-    const role = (p.uid === data.owner) ? '(ผู้เชี่ยวชาญ)' : '(เจ้าหน้าที่ภาคสนาม)';
     const li = document.createElement('li');
-    li.textContent = `${p.name} ${role}`;
+    const role = (p.uid === data.players[0]?.uid) ? 'Tech Expert' : 'Field Agent';
+    li.textContent = `${p.name} (${role})` + (p.uid === data.owner ? ' (เจ้าของห้อง)' : '');
     playersList.appendChild(li);
   });
-  if (me && me.uid === data.owner && (data.players || []).length >= 2 && data.status === 'waiting') {
+  if (me && me.uid === data.owner && (data.players || []).length >= 2) {
     startGameBtn.classList.remove('hidden');
-    ownerHint.textContent = 'คุณคือผู้เชี่ยวชาญ — กด "เริ่มภารกิจ" เมื่อพร้อม';
+    ownerHint.textContent = 'คุณเป็นเจ้าของห้อง — กด "เริ่มเกม" เมื่อพร้อม';
   } else {
     startGameBtn.classList.add('hidden');
-    ownerHint.textContent = '';
+    ownerHint.textContent = (data.players.length < 2) ? 'รอผู้เล่นอีกคน...' : 'รอเจ้าของห้องเริ่มเกม...';
   }
 }
 
 function showLobbyRoomView(){
-  isGameUIShown = false;
-  renderedStage = 0;
-  clearInterval(countdownInterval);
-  countdownInterval = null;
   mainLobby.classList.remove('hidden');
   roomInfo.classList.remove('hidden');
   sectionGame.classList.add('hidden');
@@ -227,93 +219,57 @@ function showLobbyRoomView(){
 }
 
 function showLobby(){
-  if (roomUnsubscribe) { roomUnsubscribe(); roomUnsubscribe = null; }
-  currentRoomId = null;
+  mainLobby.classList.remove('hidden');
   roomInfo.classList.add('hidden');
   startGameBtn.classList.add('hidden');
-  showLobbyRoomView();
+  sectionGame.classList.add('hidden');
+  createRoomBtn.disabled = false;
+  createRoomBtn.textContent = 'สร้างภารกิจใหม่';
+}
+
+function cleanupAndShowLobby() {
+    if (roomUnsubscribe) { roomUnsubscribe(); roomUnsubscribe = null; }
+    clearInterval(countdownInterval);
+    countdownInterval = null;
+    currentRoomId = null;
+    localRole = null;
+    ownerUid = null;
+    renderedStage = 0;
+    showLobby();
 }
 
 async function cleanupRoom(){
   if (!currentRoomId) return;
   const ref = doc(db, 'rooms', currentRoomId);
-  try {
-    if (me && me.name) {
-      await updateDoc(ref, { players: arrayRemove({ uid: me.uid, name: me.name }) });
-    }
-  } catch (e) {}
-  if (roomUnsubscribe) { roomUnsubscribe(); roomUnsubscribe = null; }
-  currentRoomId = null;
-  localRole = null;
-  ownerUid = null;
-  clearInterval(countdownInterval);
-  countdownInterval = null;
-  isGameUIShown = false;
-  renderedStage = 0;
+  try { await updateDoc(ref, { players: arrayRemove({ uid: me.uid, name: me.name }) }); } catch (e) {}
+  cleanupAndShowLobby();
 }
 
-// --- Timer and Finish Screen Logic ---
+// --- Timer Logic ---
 function startTimer(roomData) {
-  if (me.uid === roomData.owner && !countdownInterval) {
-    countdownInterval = setInterval(async ()=>{
-      const roomRef = doc(db, 'rooms', currentRoomId);
-      const snap = await getDoc(roomRef);
-      if (!snap.exists()) { clearInterval(countdownInterval); return; }
-      const r = snap.data();
-      if (!r.state || r.status !== 'playing') {
-        clearInterval(countdownInterval);
-        countdownInterval = null;
-        return;
-      }
-      const newTime = (r.state.timeLeft || 0) - 1;
-      if (newTime < 0) {
-        clearInterval(countdownInterval);
-        countdownInterval = null;
-        await updateDoc(roomRef, { 'state.timeLeft': 0, status: 'finished', 'state.defused': false });
-      } else {
-        await updateDoc(roomRef, { 'state.timeLeft': newTime });
-      }
-    }, 1000);
-  }
-}
-
-function updateTimer(timeLeft) {
-  timerText.textContent = 'เวลา: ' + formatTime(timeLeft);
-  if (timeLeft < 60 && timeLeft > 0) {
-      timerText.classList.add('timer-critical');
-  } else {
-      timerText.classList.remove('timer-critical');
-  }
-}
-
-function showFinishedScreen(roomData) {
-    clearInterval(countdownInterval);
-    countdownInterval = null;
-    isGameUIShown = false;
-    renderedStage = 0;
-    gameArea.innerHTML = '';
-    const state = roomData.state;
-
-    const summary = document.createElement('div');
-    summary.style.textAlign = 'center';
-
-    const title = document.createElement('h3');
-    if (state.defused) {
-        title.textContent = '✅ ภารกิจสำเร็จ! ระเบิดถูกกู้แล้ว! ✅';
-        title.style.color = 'var(--accent)';
-    } else {
-        title.textContent = '💥 ภารกิจล้มเหลว! 💥';
-        title.style.color = 'var(--danger)';
+    if (me.uid === roomData.owner && roomData.status === 'playing' && !countdownInterval) {
+        countdownInterval = setInterval(async ()=>{
+            const roomRef = doc(db, 'rooms', currentRoomId);
+            const snap = await getDoc(roomRef);
+            if (!snap.exists()) { clearInterval(countdownInterval); return; }
+            const r = snap.data();
+            if (!r.state || r.status !== 'playing') {
+                clearInterval(countdownInterval);
+                countdownInterval = null;
+                return;
+            }
+            const newTime = (r.state.timeLeft || 0) - 1;
+            if (newTime <= 0) {
+                await updateDoc(roomRef, { status: 'finished', 'state.defused': false, 'state.timeLeft': 0 });
+            } else {
+                await updateDoc(roomRef, { 'state.timeLeft': newTime });
+            }
+        }, 1000);
     }
-    summary.appendChild(title);
+}
 
-    const report = document.createElement('p');
-    report.innerHTML = `เวลาที่เหลือ: ${formatTime(state.timeLeft)}`;
-    summary.appendChild(report);
-
-    gameArea.appendChild(summary);
-    document.querySelectorAll('#game button').forEach(b => b.disabled = true);
-    backToLobbyBtn.disabled = false;
+function updateTimer(seconds) {
+    timerText.textContent = 'เวลา: ' + formatTime(seconds);
 }
 
 function formatTime(sec){
@@ -324,147 +280,14 @@ function formatTime(sec){
   return `${m}:${s}`;
 }
 
+// --- Initial Load ---
+window.addEventListener('load', initializeAuth);
 window.addEventListener('beforeunload', async ()=>{
   if (currentRoomId && me) {
-    cleanupRoom();
+    await cleanupRoom();
   }
 });
-// =================================================================
-// Defuse Duo - script.js (HIGH REPLAYABILITY UPDATE)
-// PART 2 OF 3
-// =================================================================
 
-// -----------------------------------------------------------------
-// SECTION 2: DYNAMIC PUZZLE GENERATION LOGIC
-// -----------------------------------------------------------------
-
-// --- Helper for puzzle generation ---
-function shuffleArray(array) {
-  for (let i = array.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [array[i], array[j]] = [array[j], array[i]];
-  }
-  return array;
-}
-
-function getRandomElement(arr) {
-    return arr[Math.floor(Math.random() * arr.length)];
-}
-
-// --- Master Puzzle Generation Function ---
-function generateFullPuzzle(roomId) {
-  // --- STAGE 1: CONDITIONAL WIRING (DYNAMIC RULES) ---
-  const symbolPool = ['⍰','↟','⍼','⟐','⨳','⩻','⪢','⟁'];
-  const colorPool = ['red', 'blue', 'yellow', 'green']; // Added green for more variety
-  const wiresOnBomb = [];
-  for (let i = 0; i < 4; i++) {
-    wiresOnBomb.push({
-      id: i,
-      symbol: getRandomElement(symbolPool),
-      color: getRandomElement(colorPool)
-    });
-  }
-
-  const stage1RuleLibrary = [
-    { id: 'S1_R1', condition: (w) => w.filter(c => c.color === 'red').length > 1, action: (w) => w.filter(c => c.color === 'red').pop(), description: "ถ้ามีสายไฟสี <b>แดง</b> มากกว่า 1 เส้น", subDescription: "→ ให้ตัดสายไฟสี <b>แดง</b> เส้นสุดท้าย" },
-    { id: 'S1_R2', condition: (w) => !w.some(c => c.color === 'blue'), action: (w) => w[1], description: "ถ้า <b>ไม่มี</b> สายไฟสี <b>น้ำเงิน</b> เลย", subDescription: "→ ให้ตัดสายไฟเส้นที่ <b>สอง</b>" },
-    { id: 'S1_R3', condition: (w) => w.filter(c => c.color === 'yellow').length === 1, action: (w) => w.find(c => c.color === 'yellow'), description: "ถ้ามีสายไฟสี <b>เหลือง</b> เพียงเส้นเดียว", subDescription: "→ ให้ตัดสายไฟสี <b>เหลือง</b> เส้นนั้น" },
-    { id: 'S1_R4', condition: (w) => w.some(c => c.symbol === '⟐'), action: (w) => w.find(c => c.symbol === '↟'), description: "ถ้ามีสายไฟสัญลักษณ์ <b>⟐</b>", subDescription: "→ ให้ตัดสายไฟสัญลักษณ์ <b>↟</b> (ถ้ามี)" },
-    { id: 'S1_R5', condition: (w) => w[3].color === 'green', action: (w) => w[0], description: "ถ้าสายไฟเส้น <b>สุดท้าย</b> เป็นสี <b>เขียว</b>", subDescription: "→ ให้ตัดสายไฟเส้น <b>แรก</b>" },
-    { id: 'S1_R6', condition: (w) => w.filter(c => c.color === 'green').length >= 2, action: (w) => w[2], description: "ถ้ามีสายไฟสี <b>เขียว</b> อย่างน้อย 2 เส้น", subDescription: "→ ให้ตัดสายไฟเส้นที่ <b>สาม</b>" },
-    { id: 'S1_R7', condition: (w) => !w.some(c => c.symbol === '⍰'), action: (w) => w.find(c => c.color === 'blue'), description: "ถ้า <b>ไม่มี</b> สัญลักษณ์ <b>⍰</b> เลย", subDescription: "→ ให้ตัดสายไฟสี <b>น้ำเงิน</b> เส้นแรก (ถ้ามี)" },
-    { id: 'S1_R8', condition: (w) => new Set(w.map(c => c.color)).size === 1, action: (w) => w[3], description: "ถ้าสายไฟ <b>ทุกเส้น</b> เป็นสีเดียวกัน", subDescription: "→ ให้ตัดสายไฟเส้น <b>สุดท้าย</b>" },
-  ];
-  
-  const stage1Rules = shuffleArray([...stage1RuleLibrary]).slice(0, 3);
-  stage1Rules.push({ id: 'S1_DEFAULT', condition: () => true, action: (w) => w[0], description: "มิเช่นนั้น (ถ้าไม่มีกฎข้อไหนตรงเลย)", subDescription: "→ ให้ตัดสายไฟเส้น <b>แรก</b>" });
-  const stage1Data = { wiresOnBomb, rules: stage1Rules };
-
-  // --- STAGE 2: POWER CALIBRATION (DYNAMIC CONDITIONS) ---
-  const initialA = (Math.floor(Math.random() * 5) + 3) * 10;
-  const initialB = (Math.floor(Math.random() * 5) + 3) * 10;
-  const initialC = (Math.floor(Math.random() * 5) + 3) * 10;
-  
-  const stage2ConditionLibrary = [
-      { id: 'S2_C1', description: "<li>ค่าพลังงานของแกน <b>A</b> ต้องมากกว่าแกน <b>C</b></li><li>ค่าพลังงานของแกน <b>B</b> ต้องเป็นเลขคู่ (ลงท้ายด้วย 0)</li>", check: (a,b,c) => a > c && b % 20 === 0 },
-      { id: 'S2_C2', description: "<li>ค่าพลังงานของแกน <b>C</b> ต้องมากกว่าแกน <b>B</b></li><li>ค่าพลังงานของแกน <b>A</b> ต้องลงท้ายด้วย 50</li>", check: (a,b,c) => c > b && a % 50 === 0 },
-      { id: 'S2_C3', description: "<li>ค่าพลังงานต้องเรียงจากน้อยไปมาก (<b>A < B < C</b>)</li>", check: (a,b,c) => a < b && b < c },
-      { id: 'S2_C4', description: "<li>ผลรวมของ <b>A และ C</b> ต้องเท่ากับ <b>B</b> พอดี</li>", check: (a,b,c) => (a + c) === b },
-      { id: 'S2_C5', description: "<li>แกนใดแกนหนึ่งต้องมีค่าเป็น <b>100</b> พอดี</li><li>แกน <b>A</b> ต้องมีค่าน้อยที่สุด</li>", check: (a,b,c) => (a === 100 || b === 100 || c === 100) && a < b && a < c },
-  ];
-  const selectedCondition = getRandomElement(stage2ConditionLibrary);
-  let targetA = initialA, targetB = initialB, targetC = initialC;
-  let attempts = 0;
-  while(attempts < 50) {
-      targetA = initialA; targetB = initialB; targetC = initialC;
-      for (let i = 0; i < 5; i++) {
-          const pressType = Math.floor(Math.random() * 3);
-          if (pressType === 0) { targetA += 10; targetB += 10; }
-          else if (pressType === 1) { targetA -= 10; targetC -= 10; }
-          else { targetB += 10; targetC -= 10; }
-      }
-      if (targetA >= 0 && targetB >= 0 && targetC >= 0 && selectedCondition.check(targetA, targetB, targetC)) {
-          break; // Found a valid solution
-      }
-      attempts++;
-  }
-  if (attempts >= 50) { return generateFullPuzzle(roomId); } // Failsafe
-  const targetSum = targetA + targetB + targetC;
-  const stage2Data = { initialA, initialB, initialC, targetSum, condition: selectedCondition };
-
-  // --- STAGE 3: IDENTITY VERIFICATION (DYNAMIC CLUES) ---
-  const iconPool = ['👤', '🕵️', '👩‍🔬', '👨‍✈️', '👩‍🚀', '👨‍💻', '💂', '🧑‍🎨'];
-  const codenamePool = ['Viper', 'Ghost', 'Raven', 'Shadow', 'Echo', 'Wraith', 'Nomad', 'Spectre'];
-  const statusPool = ['Active', 'Unknown', 'Retired', 'MIA'];
-  const affiliationPool = ['Syndicate', 'Phantoms', 'Omega', 'Protocol'];
-  const allSuspects = [];
-  const shuffledIcons = shuffleArray([...iconPool]);
-  const shuffledCodenames = shuffleArray([...codenamePool]);
-  for (let i = 0; i < 4; i++) {
-      allSuspects.push({
-          id: i,
-          icon: shuffledIcons[i],
-          codename: shuffledCodenames[i],
-          status: getRandomElement(statusPool),
-          affiliation: getRandomElement(affiliationPool)
-      });
-  }
-  const correctSuspect = getRandomElement(allSuspects);
-  const wrongSuspects = allSuspects.filter(s => s.id !== correctSuspect.id);
-  const clueTemplates = [
-      { type: 'positive', gen: (c, w) => `เป้าหมายมีสถานะเป็น "${c.status}".` },
-      { type: 'negative', gen: (c, w) => `เป้าหมายไม่ได้สังกัดกลุ่ม "${w[0].affiliation}".` },
-      { type: 'conditional', gen: (c, w) => `ถ้าเป้าหมายใช้ไอคอน ${c.icon}, เขาจะชื่อรหัส "${c.codename}".` },
-      { type: 'disjunctive', gen: (c, w) => `เป้าหมายสังกัดกลุ่ม "${c.affiliation}" หรือไม่ก็กลุ่ม "${w[1].affiliation}".` },
-      { type: 'comparative', gen: (c, w) => `ผู้ต้องสงสัยที่ชื่อรหัส "${w[0].codename}" และเป้าหมายของเรา มีสถานะเดียวกัน.` },
-      { type: 'counting', gen: (c, w) => `มีผู้ต้องสงสัยเพียง ${allSuspects.filter(s => s.status === w[2].status).length} คนที่มีสถานะเป็น "${w[2].status}".` },
-  ];
-  const stage3Rules = shuffleArray(clueTemplates).slice(0, 5).map(template => ({ description: template.gen(correctSuspect, wrongSuspects) }));
-  const stage3Data = {
-      suspects: shuffleArray(allSuspects),
-      rules: stage3Rules,
-      correctSuspectId: correctSuspect.id
-  };
-
-  // --- STAGE 4: LOGIC GRID (DYNAMIC MODIFIERS) ---
-  const colors = ['red', 'blue', 'green', 'yellow'];
-  const flashSequence = Array(5).fill(0).map(() => getRandomElement(colors));
-  const colorMap = {};
-  const shuffledColors = shuffleArray([...colors]);
-  colors.forEach((color, i) => { colorMap[color] = shuffledColors[i]; });
-  
-  const stage4ModifierLibrary = [
-      { id: 'S4_M1', description: "กฎพิเศษ: ลำดับการกดทั้งหมดต้องย้อนกลับ (Reverse)", apply: (seq) => seq.reverse() },
-      { id: 'S4_M2', description: "กฎพิเศษ: ให้สลับการกดลำดับที่ 2 กับลำดับที่ 4", apply: (seq) => { const temp = seq[1]; seq[1] = seq[3]; seq[3] = temp; return seq; } },
-      { id: 'S4_M3', description: "กฎพิเศษ: ให้กดสีสุดท้ายซ้ำ 2 ครั้ง (ลำดับยาวขึ้น)", apply: (seq) => [...seq, seq[seq.length - 1]] },
-      { id: 'S4_M4', description: "กฎพิเศษ: ให้ข้ามการกดลำดับที่ 3 ไปเลย (ลำดับสั้นลง)", apply: (seq) => seq.filter((_, i) => i !== 2) },
-      { id: 'S4_M5', description: "กฎพิเศษ: ไม่มีกฎพิเศษ", apply: (seq) => seq },
-  ];
-  const selectedModifier = getRandomElement(stage4ModifierLibrary);
-  const stage4Data = { flashSequence, colorMap, modifier: selectedModifier };
-
-  return { stage1: stage1Data, stage2: stage2Data, stage3: stage3Data, stage4: stage4Data };
-}
 // =================================================================
 // Defuse Duo - script.js (HIGH REPLAYABILITY UPDATE)
 // PART 2 OF 3 - FINAL CORRECTION
