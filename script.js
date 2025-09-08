@@ -467,7 +467,145 @@ function generateFullPuzzle(roomId) {
 }
 // =================================================================
 // Defuse Duo - script.js (HIGH REPLAYABILITY UPDATE)
-// PART 3 OF 3
+// PART 2 OF 3 - CORRECTED
+// =================================================================
+
+// -----------------------------------------------------------------
+// SECTION 2: DYNAMIC PUZZLE GENERATION LOGIC
+// -----------------------------------------------------------------
+
+// --- Helper for puzzle generation ---
+function shuffleArray(array) {
+  for (let i = array.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [array[i], array[j]] = [array[j], array[i]];
+  }
+  return array;
+}
+
+function getRandomElement(arr) {
+    return arr[Math.floor(Math.random() * arr.length)];
+}
+
+// --- Master Puzzle Generation Function ---
+function generateFullPuzzle(roomId) {
+  // --- STAGE 1: CONDITIONAL WIRING (DYNAMIC RULES) ---
+  const symbolPool = ['⍰','↟','⍼','⟐','⨳','⩻','⪢','⟁'];
+  const colorPool = ['red', 'blue', 'yellow', 'green'];
+  const wiresOnBomb = [];
+  for (let i = 0; i < 4; i++) {
+    wiresOnBomb.push({
+      id: i,
+      symbol: getRandomElement(symbolPool),
+      color: getRandomElement(colorPool)
+    });
+  }
+
+  const stage1RuleLibrary = [
+    { id: 'S1_R1', description: "ถ้ามีสายไฟสี <b>แดง</b> มากกว่า 1 เส้น", subDescription: "→ ให้ตัดสายไฟสี <b>แดง</b> เส้นสุดท้าย" },
+    { id: 'S1_R2', description: "ถ้า <b>ไม่มี</b> สายไฟสี <b>น้ำเงิน</b> เลย", subDescription: "→ ให้ตัดสายไฟเส้นที่ <b>สอง</b>" },
+    { id: 'S1_R3', description: "ถ้ามีสายไฟสี <b>เหลือง</b> เพียงเส้นเดียว", subDescription: "→ ให้ตัดสายไฟสี <b>เหลือง</b> เส้นนั้น" },
+    { id: 'S1_R4', description: "ถ้ามีสายไฟสัญลักษณ์ <b>⟐</b>", subDescription: "→ ให้ตัดสายไฟสัญลักษณ์ <b>↟</b> (ถ้ามี)" },
+    { id: 'S1_R5', description: "ถ้าสายไฟเส้น <b>สุดท้าย</b> เป็นสี <b>เขียว</b>", subDescription: "→ ให้ตัดสายไฟเส้น <b>แรก</b>" },
+    { id: 'S1_R6', description: "ถ้ามีสายไฟสี <b>เขียว</b> อย่างน้อย 2 เส้น", subDescription: "→ ให้ตัดสายไฟเส้นที่ <b>สาม</b>" },
+    { id: 'S1_R7', description: "ถ้า <b>ไม่มี</b> สัญลักษณ์ <b>⍰</b> เลย", subDescription: "→ ให้ตัดสายไฟสี <b>น้ำเงิน</b> เส้นแรก (ถ้ามี)" },
+    { id: 'S1_R8', description: "ถ้าสายไฟ <b>ทุกเส้น</b> เป็นสีเดียวกัน", subDescription: "→ ให้ตัดสายไฟเส้น <b>สุดท้าย</b>" },
+  ];
+  
+  const stage1Rules = shuffleArray([...stage1RuleLibrary]).slice(0, 3).map(rule => ({ id: rule.id, description: rule.description, subDescription: rule.subDescription }));
+  stage1Rules.push({ id: 'S1_DEFAULT', description: "มิเช่นนั้น (ถ้าไม่มีกฎข้อไหนตรงเลย)", subDescription: "→ ให้ตัดสายไฟเส้น <b>แรก</b>" });
+  const stage1Data = { wiresOnBomb, rules: stage1Rules };
+
+  // --- STAGE 2: POWER CALIBRATION (DYNAMIC CONDITIONS) ---
+  const initialA = (Math.floor(Math.random() * 5) + 3) * 10;
+  const initialB = (Math.floor(Math.random() * 5) + 3) * 10;
+  const initialC = (Math.floor(Math.random() * 5) + 3) * 10;
+  
+  const stage2ConditionLibrary = [
+      { id: 'S2_C1', description: "<li>ค่าพลังงานของแกน <b>A</b> ต้องมากกว่าแกน <b>C</b></li><li>ค่าพลังงานของแกน <b>B</b> ต้องเป็นเลขคู่ (ลงท้ายด้วย 0)</li>", check: (a,b,c) => a > c && b % 20 === 0 },
+      { id: 'S2_C2', description: "<li>ค่าพลังงานของแกน <b>C</b> ต้องมากกว่าแกน <b>B</b></li><li>ค่าพลังงานของแกน <b>A</b> ต้องลงท้ายด้วย 50</li>", check: (a,b,c) => c > b && a % 50 === 0 },
+      { id: 'S2_C3', description: "<li>ค่าพลังงานต้องเรียงจากน้อยไปมาก (<b>A < B < C</b>)</li>", check: (a,b,c) => a < b && b < c },
+      { id: 'S2_C4', description: "<li>ผลรวมของ <b>A และ C</b> ต้องเท่ากับ <b>B</b> พอดี</li>", check: (a,b,c) => (a + c) === b },
+      { id: 'S2_C5', description: "<li>แกนใดแกนหนึ่งต้องมีค่าเป็น <b>100</b> พอดี</li><li>แกน <b>A</b> ต้องมีค่าน้อยที่สุด</li>", check: (a,b,c) => (a === 100 || b === 100 || c === 100) && a < b && a < c },
+  ];
+  const selectedCondition = getRandomElement(stage2ConditionLibrary);
+  let targetA = initialA, targetB = initialB, targetC = initialC;
+  let attempts = 0;
+  while(attempts < 50) {
+      targetA = initialA; targetB = initialB; targetC = initialC;
+      for (let i = 0; i < 5; i++) {
+          const pressType = Math.floor(Math.random() * 3);
+          if (pressType === 0) { targetA += 10; targetB += 10; }
+          else if (pressType === 1) { targetA -= 10; targetC -= 10; }
+          else { targetB += 10; targetC -= 10; }
+      }
+      if (targetA >= 0 && targetB >= 0 && targetC >= 0 && selectedCondition.check(targetA, targetB, targetC)) {
+          break;
+      }
+      attempts++;
+  }
+  if (attempts >= 50) { return generateFullPuzzle(roomId); }
+  const targetSum = targetA + targetB + targetC;
+  // **** FIXED HERE: Only store the ID and description, not the whole object with the 'check' function ****
+  const stage2Data = { initialA, initialB, initialC, targetSum, condition: { id: selectedCondition.id, description: selectedCondition.description } };
+
+  // --- STAGE 3: IDENTITY VERIFICATION (DYNAMIC CLUES) ---
+  const iconPool = ['👤', '🕵️', '👩‍🔬', '👨‍✈️', '👩‍🚀', '👨‍💻', '💂', '🧑‍🎨'];
+  const codenamePool = ['Viper', 'Ghost', 'Raven', 'Shadow', 'Echo', 'Wraith', 'Nomad', 'Spectre'];
+  const statusPool = ['Active', 'Unknown', 'Retired', 'MIA'];
+  const affiliationPool = ['Syndicate', 'Phantoms', 'Omega', 'Protocol'];
+  const allSuspects = [];
+  const shuffledIcons = shuffleArray([...iconPool]);
+  const shuffledCodenames = shuffleArray([...codenamePool]);
+  for (let i = 0; i < 4; i++) {
+      allSuspects.push({
+          id: i,
+          icon: shuffledIcons[i],
+          codename: shuffledCodenames[i],
+          status: getRandomElement(statusPool),
+          affiliation: getRandomElement(affiliationPool)
+      });
+  }
+  const correctSuspect = getRandomElement(allSuspects);
+  const wrongSuspects = allSuspects.filter(s => s.id !== correctSuspect.id);
+  const clueTemplates = [
+      { gen: (c, w) => `เป้าหมายมีสถานะเป็น "${c.status}".` },
+      { gen: (c, w) => `เป้าหมายไม่ได้สังกัดกลุ่ม "${w[0].affiliation}".` },
+      { gen: (c, w) => `ถ้าเป้าหมายใช้ไอคอน ${c.icon}, เขาจะชื่อรหัส "${c.codename}".` },
+      { gen: (c, w) => `เป้าหมายสังกัดกลุ่ม "${c.affiliation}" หรือไม่ก็กลุ่ม "${w[1].affiliation}".` },
+      { gen: (c, w) => `ผู้ต้องสงสัยที่ชื่อรหัส "${w[0].codename}" และเป้าหมายของเรา มีสถานะเดียวกัน.` },
+      { gen: (c, w) => `มีผู้ต้องสงสัยเพียง ${allSuspects.filter(s => s.status === w[2].status).length} คนที่มีสถานะเป็น "${w[2].status}".` },
+  ];
+  const stage3Rules = shuffleArray(clueTemplates).slice(0, 5).map(template => ({ description: template.gen(correctSuspect, wrongSuspects) }));
+  const stage3Data = {
+      suspects: shuffleArray(allSuspects),
+      rules: stage3Rules,
+      correctSuspectId: correctSuspect.id
+  };
+
+  // --- STAGE 4: LOGIC GRID (DYNAMIC MODIFIERS) ---
+  const colors = ['red', 'blue', 'green', 'yellow'];
+  const flashSequence = Array(5).fill(0).map(() => getRandomElement(colors));
+  const colorMap = {};
+  const shuffledColors = shuffleArray([...colors]);
+  colors.forEach((color, i) => { colorMap[color] = shuffledColors[i]; });
+  
+  const stage4ModifierLibrary = [
+      { id: 'S4_M1', description: "กฎพิเศษ: ลำดับการกดทั้งหมดต้องย้อนกลับ (Reverse)" },
+      { id: 'S4_M2', description: "กฎพิเศษ: ให้สลับการกดลำดับที่ 2 กับลำดับที่ 4" },
+      { id: 'S4_M3', description: "กฎพิเศษ: ให้กดสีสุดท้ายซ้ำ 2 ครั้ง (ลำดับยาวขึ้น)" },
+      { id: 'S4_M4', description: "กฎพิเศษ: ให้ข้ามการกดลำดับที่ 3 ไปเลย (ลำดับสั้นลง)" },
+      { id: 'S4_M5', description: "กฎพิเศษ: ไม่มีกฎพิเศษ" },
+  ];
+  const selectedModifier = getRandomElement(stage4ModifierLibrary);
+  // **** FIXED HERE: Only store the ID and description, not the whole object with the 'apply' function ****
+  const stage4Data = { flashSequence, colorMap, modifier: { id: selectedModifier.id, description: selectedModifier.description } };
+
+  return { stage1: stage1Data, stage2: stage2Data, stage3: stage3Data, stage4: stage4Data };
+}
+// =================================================================
+// Defuse Duo - script.js (HIGH REPLAYABILITY UPDATE)
+// PART 3 OF 3 - CORRECTED
 // =================================================================
 
 // -----------------------------------------------------------------
@@ -561,7 +699,7 @@ async function handleWireCut(cutWireId) {
     const rulesFromDB = data.state.puzzle.stage1.rules;
     if (!Array.isArray(rulesFromDB)) return; 
 
-    // Re-create the full rule library on the client to find the logic
+    // **** FIXED HERE: Re-create the full rule library on the client to find the logic ****
     const stage1RuleLibrary = [
         { id: 'S1_R1', condition: (w) => w.filter(c => c.color === 'red').length > 1, action: (w) => w.filter(c => c.color === 'red').pop() },
         { id: 'S1_R2', condition: (w) => !w.some(c => c.color === 'blue'), action: (w) => w[1] },
@@ -649,6 +787,7 @@ function renderStage2(roomData) {
     gameArea.append(info, displayContainer, controlContainer);
     let currentA = puzzleState.initialA, currentB = puzzleState.initialB, currentC = puzzleState.initialC;
     
+    // **** FIXED HERE: Re-create the library on the client to find the correct 'check' function ****
     const stage2ConditionLibrary = [
         { id: 'S2_C1', check: (a,b,c) => a > c && b % 20 === 0 },
         { id: 'S2_C2', check: (a,b,c) => c > b && a % 50 === 0 },
@@ -812,6 +951,7 @@ async function handleLogicGridPress(color) {
     const puzzle = state.puzzle.stage4;
     const playerPresses = state.logicGrid_playerPresses || [];
 
+    // **** FIXED HERE: Re-create the library on the client to find the correct 'apply' function ****
     const stage4ModifierLibrary = [
         { id: 'S4_M1', apply: (seq) => seq.reverse() },
         { id: 'S4_M2', apply: (seq) => { const temp = seq[1]; seq[1] = seq[3]; seq[3] = temp; return seq; } },
@@ -822,7 +962,7 @@ async function handleLogicGridPress(color) {
     const modifierFunction = stage4ModifierLibrary.find(m => m.id === puzzle.modifier.id).apply;
 
     let initialSequence = puzzle.flashSequence.map(seenColor => puzzle.colorMap[seenColor]);
-    let correctSequence = modifierFunction([...initialSequence]); // Use spread to avoid modifying the original array
+    let correctSequence = modifierFunction([...initialSequence]);
 
     const nextCorrectColor = correctSequence[playerPresses.length];
     if (color === nextCorrectColor) {
