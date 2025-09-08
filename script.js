@@ -1,9 +1,10 @@
 // =================================================================
 // Defuse Duo - script.js (Complete & Final Version)
+// PART 1 OF 3
 // =================================================================
 
 // -----------------------------------------------------------------
-// PART 1: MAIN CONTROL, LOBBY, AND FIREBASE SETUP
+// SECTION 1: MAIN CONTROL, LOBBY, AND FIREBASE SETUP
 // -----------------------------------------------------------------
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
@@ -328,10 +329,13 @@ window.addEventListener('beforeunload', async ()=>{
     cleanupRoom();
   }
 });
-
+// =================================================================
+// Defuse Duo - script.js (Complete & Final Version)
+// PART 2 OF 3
+// =================================================================
 
 // -----------------------------------------------------------------
-// PART 2: PUZZLE MODULES AND GAME LOGIC
+// SECTION 2: PUZZLE GENERATION LOGIC
 // -----------------------------------------------------------------
 
 // --- Rule Library for Stage 1 (Client-side logic) ---
@@ -407,20 +411,41 @@ function generateFullPuzzle(roomId) {
   const targetSum = targetA + targetB + targetC;
   const stage2Data = { initialA, initialB, initialC, targetSum };
 
-  // --- STAGE 3: PASSWORD OVERRIDE ---
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-  const grid = Array(25).fill(0).map(() => chars[Math.floor(Math.random() * chars.length)]);
-  const passwordPositions = [];
-  const passwordChars = [];
-  while (passwordPositions.length < 5) {
-    const pos = Math.floor(Math.random() * 25);
-    if (!passwordPositions.includes(pos)) {
-      passwordPositions.push(pos);
-      passwordChars.push(grid[pos]);
-    }
+  // --- STAGE 3: IDENTITY VERIFICATION ---
+  const iconPool = ['👤', '🕵️', '👩‍🔬', '👨‍✈️', '👩‍🚀', '👨‍💻'];
+  const codenamePool = ['Viper', 'Ghost', 'Raven', 'Shadow', 'Echo', 'Wraith'];
+  const statusPool = ['Active', 'Unknown', 'Retired', 'MIA'];
+  const affiliationPool = ['Syndicate', 'Phantoms', 'Omega', 'Protocol'];
+  const allSuspects = [];
+  const shuffledIcons = shuffleArray([...iconPool]);
+  const shuffledCodenames = shuffleArray([...codenamePool]);
+  const shuffledStatuses = shuffleArray([...statusPool]);
+  const shuffledAffiliations = shuffleArray([...affiliationPool]);
+  for (let i = 0; i < 4; i++) {
+      allSuspects.push({
+          id: i,
+          icon: shuffledIcons[i],
+          codename: shuffledCodenames[i],
+          status: shuffledStatuses[i],
+          affiliation: shuffledAffiliations[i]
+      });
   }
-  const correctPassword = passwordChars.join('');
-  const stage3Data = { grid, passwordPositions, correctPassword };
+  const correctSuspect = allSuspects[Math.floor(Math.random() * 4)];
+  const wrongSuspects = allSuspects.filter(s => s.id !== correctSuspect.id);
+  const stage3Rules = [];
+  stage3Rules.push({ description: `เป้าหมายมีสถานะเป็น "${correctSuspect.status}".` });
+  const wrong1 = wrongSuspects[0];
+  stage3Rules.push({ description: `เป้าหมายไม่ได้สังกัดกลุ่ม "${wrong1.affiliation}".` });
+  stage3Rules.push({ description: `ถ้าเป้าหมายใช้ไอคอน ${correctSuspect.icon}, เขาจะชื่อรหัส "${correctSuspect.codename}".` });
+  const wrong2 = wrongSuspects[1];
+  stage3Rules.push({ description: `เป้าหมายไม่ได้ใช้ไอคอน ${wrong2.icon}.` });
+  const wrong3 = wrongSuspects[2];
+  stage3Rules.push({ description: `เป้าหมายสังกัดกลุ่ม "${correctSuspect.affiliation}" หรือไม่ก็กลุ่ม "${wrong3.affiliation}".` });
+  const stage3Data = {
+      suspects: shuffleArray(allSuspects),
+      rules: shuffleArray(stage3Rules),
+      correctSuspectId: correctSuspect.id
+  };
 
   // --- STAGE 4: LOGIC GRID ---
   const colors = ['red', 'blue', 'green', 'yellow'];
@@ -433,6 +458,14 @@ function generateFullPuzzle(roomId) {
 
   return { stage1: stage1Data, stage2: stage2Data, stage3: stage3Data, stage4: stage4Data };
 }
+// =================================================================
+// Defuse Duo - script.js (Complete & Final Version)
+// PART 3 OF 3
+// =================================================================
+
+// -----------------------------------------------------------------
+// SECTION 3: PUZZLE RENDERING AND HANDLING
+// -----------------------------------------------------------------
 
 // --- Main Game Rendering Logic ---
 function showGame(roomData){
@@ -538,172 +571,124 @@ async function handleWireCut(cutWireId) {
     }
 }
 
-// --- STAGE 2: POWER CALIBRATION (New, more complex version) ---
+// --- STAGE 2: POWER CALIBRATION ---
 function renderStage2(roomData) {
   const puzzleState = roomData.state.puzzle.stage2;
-  
   if (localRole === 'Tech Expert') {
     const info = document.createElement('p');
     info.className = 'muted';
     info.innerHTML = '<b>คู่มือด่าน 2: การปรับเทียบพลังงาน</b>';
-
     const manual = document.createElement('div');
     manual.className = 'manual-list';
-    manual.innerHTML = `
-      <p>ค่าพลังงานเริ่มต้น: <b>A: ${puzzleState.initialA}, B: ${puzzleState.initialB}, C: ${puzzleState.initialC}</b></p>
-      <p>เป้าหมาย: ทำให้ <b>ผลรวมของ A+B+C</b> เท่ากับ <b>${puzzleState.targetSum}</b></p>
-      <b>เงื่อนไขพิเศษที่ต้องทำตาม:</b>
-      <ul>
-        <li>ค่าพลังงานของแกน <b>A</b> ต้องมากกว่าแกน <b>C</b></li>
-        <li>ค่าพลังงานของแกน <b>B</b> ต้องเป็นเลขคู่ (ลงท้ายด้วย 0)</li>
-        <li>ห้ามให้ค่าพลังงานของแกนใดแกนหนึ่งติดลบ</li>
-      </ul>
-    `;
+    manual.innerHTML = `<p>ค่าพลังงานเริ่มต้น: <b>A: ${puzzleState.initialA}, B: ${puzzleState.initialB}, C: ${puzzleState.initialC}</b></p><p>เป้าหมาย: ทำให้ <b>ผลรวมของ A+B+C</b> เท่ากับ <b>${puzzleState.targetSum}</b></p><b>เงื่อนไขพิเศษที่ต้องทำตาม:</b><ul><li>ค่าพลังงานของแกน <b>A</b> ต้องมากกว่าแกน <b>C</b></li><li>ค่าพลังงานของแกน <b>B</b> ต้องเป็นเลขคู่ (ลงท้ายด้วย 0)</li><li>ห้ามให้ค่าพลังงานของแกนใดแกนหนึ่งติดลบ</li></ul>`;
     gameArea.append(info, manual);
-
   } else { // Field Agent
     const info = document.createElement('p');
     info.className = 'muted';
     info.textContent = 'ปรับเทียบแกนพลังงานตามคำสั่งของผู้เชี่ยวชาญ';
-
     const displayContainer = document.createElement('div');
     displayContainer.className = 'reactor-display-container';
-    
     const displayA = document.createElement('div');
     displayA.className = 'reactor-display';
     displayA.innerHTML = `<span>A</span><strong id="valA">${puzzleState.initialA}</strong>`;
-    
     const displayB = document.createElement('div');
     displayB.className = 'reactor-display';
     displayB.innerHTML = `<span>B</span><strong id="valB">${puzzleState.initialB}</strong>`;
-
     const displayC = document.createElement('div');
     displayC.className = 'reactor-display';
     displayC.innerHTML = `<span>C</span><strong id="valC">${puzzleState.initialC}</strong>`;
-
     displayContainer.append(displayA, displayB, displayC);
-
     const controlContainer = document.createElement('div');
     controlContainer.className = 'reactor-controls';
-
     const btnPlusA = document.createElement('button');
     btnPlusA.textContent = '+A';
     btnPlusA.title = '+10 to A, +10 to B';
-    
     const btnMinusA = document.createElement('button');
     btnMinusA.textContent = '-A';
     btnMinusA.title = '-10 to A, -10 to C';
-
     const btnPlusB = document.createElement('button');
     btnPlusB.textContent = '+B';
     btnPlusB.title = '+10 to B, -10 to C';
-
     const confirmBtn = document.createElement('button');
     confirmBtn.id = 'confirmCalibrationBtn';
     confirmBtn.textContent = 'SET';
-    confirmBtn.disabled = true; // Start disabled
-
+    confirmBtn.disabled = true;
     controlContainer.append(btnPlusA, btnMinusA, btnPlusB, confirmBtn);
     gameArea.append(info, displayContainer, controlContainer);
-
-    // --- Client-side logic for Field Agent ---
-    let currentA = puzzleState.initialA;
-    let currentB = puzzleState.initialB;
-    let currentC = puzzleState.initialC;
-
+    let currentA = puzzleState.initialA, currentB = puzzleState.initialB, currentC = puzzleState.initialC;
     const updateDisplays = () => {
       document.getElementById('valA').textContent = currentA;
       document.getElementById('valB').textContent = currentB;
       document.getElementById('valC').textContent = currentC;
-
-      // Check if conditions are met to enable confirm button
       const isSumCorrect = (currentA + currentB + currentC) === puzzleState.targetSum;
       const isACorrect = currentA > currentC;
-      const isBCorrect = currentB % 20 === 0; // Simple check for even tens
+      const isBCorrect = currentB % 20 === 0;
       const isNotNegative = currentA >= 0 && currentB >= 0 && currentC >= 0;
-
       confirmBtn.disabled = !(isSumCorrect && isACorrect && isBCorrect && isNotNegative);
     };
-
     btnPlusA.onclick = () => { currentA += 10; currentB += 10; updateDisplays(); };
     btnMinusA.onclick = () => { currentA -= 10; currentC -= 10; updateDisplays(); };
     btnPlusB.onclick = () => { currentB += 10; currentC -= 10; updateDisplays(); };
     confirmBtn.onclick = () => handleCalibrationConfirm();
-    
-    updateDisplays(); // Initial check
+    updateDisplays();
   }
 }
 
 async function handleCalibrationConfirm() {
-    // Since the button is only enabled when correct, we just need to advance the stage.
     const roomRef = doc(db, 'rooms', currentRoomId);
     const currentSnap = await getDoc(roomRef);
     if (currentSnap.data().status !== 'playing') return;
-    
     await updateDoc(roomRef, { 'state.currentStage': 3 });
 }
-// --- STAGE 3: PASSWORD OVERRIDE ---
+
+// --- STAGE 3: IDENTITY VERIFICATION ---
 function renderStage3(roomData) {
   const puzzleState = roomData.state.puzzle.stage3;
   if (localRole === 'Tech Expert') {
     const info = document.createElement('p');
     info.className = 'muted';
-    info.textContent = 'บอกตัวอักษรตามตำแหน่งที่คู่หูของคุณเห็น';
-    const grid = document.createElement('div');
-    grid.className = 'password-grid';
-    puzzleState.grid.forEach(char => {
-      const cell = document.createElement('div');
-      cell.className = 'grid-cell';
-      cell.textContent = char;
-      grid.appendChild(cell);
+    info.innerHTML = '<b>คู่มือด่าน 3: ฐานข้อมูลข่าวกรอง</b><br>ใช้ข้อมูลนี้เพื่อระบุตัวตนเป้าหมายที่แท้จริง';
+    const manualList = document.createElement('ol');
+    manualList.className = 'manual-list';
+    puzzleState.rules.forEach(rule => {
+        const li = document.createElement('li');
+        li.textContent = rule.description;
+        manualList.appendChild(li);
     });
-    gameArea.append(info, grid);
+    gameArea.append(info, manualList);
   } else { // Field Agent
     const info = document.createElement('p');
     info.className = 'muted';
-    info.textContent = 'บอกตำแหน่งที่ไฮไลท์ให้ผู้เชี่ยวชาญทราบ แล้วป้อนรหัสที่ได้มา';
-    const grid = document.createElement('div');
-    grid.className = 'password-grid';
-    for(let i = 0; i < 25; i++) {
-      const cell = document.createElement('div');
-      cell.className = 'grid-cell';
-      if (puzzleState.passwordPositions.includes(i)) {
-        cell.classList.add('highlight');
-        cell.textContent = '?';
-      }
-      grid.appendChild(cell);
-    }
-    
-    const inputArea = document.createElement('div');
-    inputArea.className = 'password-input-area';
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.placeholder = 'ป้อนรหัสผ่าน...';
-    input.maxLength = 5;
-    
-    const confirmBtn = document.createElement('button');
-    confirmBtn.textContent = 'ปลดล็อก';
-    confirmBtn.onclick = () => handlePasswordConfirm(input.value);
-
-    inputArea.append(input, confirmBtn);
-    gameArea.append(info, grid, inputArea);
+    info.textContent = 'รายงานข้อมูลผู้ต้องสงสัยทั้งหมด แล้วเลือกเป้าหมายตามที่ผู้เชี่ยวชาญระบุ';
+    const suspectContainer = document.createElement('div');
+    suspectContainer.className = 'suspect-container';
+    puzzleState.suspects.forEach(suspect => {
+      const card = document.createElement('div');
+      card.className = 'suspect-card';
+      card.onclick = async () => {
+        document.querySelectorAll('.suspect-card').forEach(c => c.style.pointerEvents = 'none');
+        card.classList.add('selected');
+        await handleIdentityConfirm(suspect.id);
+      };
+      card.innerHTML = `<div class="suspect-icon">${suspect.icon}</div><div class="suspect-details"><div class="suspect-codename">${suspect.codename}</div><div class="suspect-info">สถานะ: ${suspect.status}</div><div class="suspect-info">สังกัด: ${suspect.affiliation}</div></div>`;
+      suspectContainer.appendChild(card);
+    });
+    gameArea.append(info, suspectContainer);
   }
 }
 
-async function handlePasswordConfirm(password) {
+async function handleIdentityConfirm(selectedSuspectId) {
     const roomRef = doc(db, 'rooms', currentRoomId);
     const currentSnap = await getDoc(roomRef);
     if (currentSnap.data().status !== 'playing') return;
-    
-    const correctPassword = currentSnap.data().state.puzzle.stage3.correctPassword;
-
-    // FIX: Convert user's input to uppercase before comparing
-    if (password.toUpperCase() === correctPassword) {
+    const correctSuspectId = currentSnap.data().state.puzzle.stage3.correctSuspectId;
+    if (selectedSuspectId === correctSuspectId) {
         await updateDoc(roomRef, { 'state.currentStage': 4 });
     } else {
         await updateDoc(roomRef, { status: 'finished', 'state.defused': false });
     }
 }
+
 // --- STAGE 4: LOGIC GRID ---
 function renderStage4(roomData) {
   const puzzleState = roomData.state.puzzle.stage4;
@@ -711,7 +696,6 @@ function renderStage4(roomData) {
     const info = document.createElement('p');
     info.className = 'muted';
     info.innerHTML = '<b>คู่มือด่าน 4:</b> แปลงสัญญาณที่คู่หูเห็นให้เป็นลำดับการกดที่ถูกต้อง';
-    
     const rule1 = document.createElement('div');
     rule1.innerHTML = '<b>กฎข้อที่ 1: การแมปสี</b>';
     const mapList = document.createElement('ul');
@@ -721,17 +705,13 @@ function renderStage4(roomData) {
         mapList.appendChild(li);
     }
     rule1.appendChild(mapList);
-
     const rule2 = document.createElement('div');
     rule2.innerHTML = `<b>กฎข้อที่ 2: กฎพิเศษ</b><br>${puzzleState.hasNumberInRoomId ? 'รหัสภารกิจมีตัวเลข: ลำดับการกดทั้งหมดต้องย้อนกลับ (Reverse)' : 'รหัสภารกิจไม่มีตัวเลข: ไม่มีกฎพิเศษ'}`;
-    
     gameArea.append(info, rule1, rule2);
-
   } else { // Field Agent
     const info = document.createElement('p');
     info.className = 'muted';
     info.textContent = 'จดจำลำดับการกระพริบ แล้วรายงานให้ผู้เชี่ยวชาญทราบ!';
-    
     const gridContainer = document.createElement('div');
     gridContainer.className = 'logic-grid-container';
     const buttons = {};
@@ -743,10 +723,7 @@ function renderStage4(roomData) {
         gridContainer.appendChild(btn);
         buttons[color] = btn;
     });
-
     gameArea.append(info, gridContainer);
-
-    // หน่วงเวลาเล็กน้อยก่อนเริ่มกระพริบเพื่อให้ผู้เล่นตั้งตัว
     setTimeout(() => {
         let i = 0;
         const interval = setInterval(() => {
@@ -755,17 +732,17 @@ function renderStage4(roomData) {
                 return;
             }
             const colorToFlash = puzzleState.flashSequence[i];
-            if (buttons[colorToFlash]) { // Check if button exists before adding class
+            if (buttons[colorToFlash]) {
                 buttons[colorToFlash].classList.add('flash');
                 setTimeout(() => {
                     if (buttons[colorToFlash]) {
                         buttons[colorToFlash].classList.remove('flash');
                     }
-                }, 400); // ระยะเวลาที่สีจะสว่าง
+                }, 400);
             }
             i++;
-        }, 600); // ความเร็วในการกระพริบ
-    }, 1500); // เริ่มกระพริบหลังจาก 1.5 วินาที
+        }, 600);
+    }, 1500);
   }
 }
 
@@ -774,43 +751,29 @@ async function handleLogicGridPress(color) {
     const snap = await getDoc(roomRef);
     const data = snap.data();
     if (data.status !== 'playing') return;
-
     const state = data.state;
     const puzzle = state.puzzle.stage4;
     const playerPresses = state.logicGrid_playerPresses || [];
-
-    // คำนวณลำดับที่ถูกต้องฝั่ง Client
     let correctSequence = puzzle.flashSequence.map(seenColor => puzzle.colorMap[seenColor]);
     if (puzzle.hasNumberInRoomId) {
         correctSequence.reverse();
     }
-
     const nextCorrectColor = correctSequence[playerPresses.length];
-
     if (color === nextCorrectColor) {
-        // ถ้ากดถูก
         const newPresses = [...playerPresses, color];
         if (newPresses.length === correctSequence.length) {
-            // ถ้ากดถูกครบทั้งหมด -> ชนะเกม
             await updateDoc(roomRef, { status: 'finished', 'state.defused': true });
         } else {
-            // ถ้ายังไม่ครบ ให้บันทึกลำดับที่กดแล้ว
             await updateDoc(roomRef, { 'state.logicGrid_playerPresses': newPresses });
         }
     } else {
-        // ถ้ากดผิด
-        const newTime = Math.max(0, state.timeLeft - 45); // ลดเวลา 45 วินาที
-        // สุ่มลำดับการกระพริบใหม่
+        const newTime = Math.max(0, state.timeLeft - 45);
         const newFlashSequence = Array(5).fill(0).map(() => ['red', 'blue', 'green', 'yellow'][Math.floor(Math.random() * 4)]);
-        
-        // อัปเดต state ของเกม: เวลาลด, ล้างลำดับที่ผู้เล่นกด, และใช้ลำดับการกระพริบใหม่
         await updateDoc(roomRef, {
             'state.timeLeft': newTime,
             'state.logicGrid_playerPresses': [],
             'state.puzzle.stage4.flashSequence': newFlashSequence
         });
-        
-        // บอกให้ Client รู้ว่าต้อง render ด่านนี้ใหม่ (เพราะ flashSequence เปลี่ยน)
         renderedStage = 0; 
     }
 }
