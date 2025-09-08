@@ -1,15 +1,12 @@
 // =================================================================
 // Defuse Duo - script.js (STAGE-BASED SPLIT - 1/4)
-// Core, Lobby, and Stage 1 Logic
+// Initialization, Auth, Lobby, and Stage 1 Logic
 // =================================================================
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
-import {
-  getFirestore, doc, setDoc, getDoc, onSnapshot, updateDoc, arrayUnion, arrayRemove, serverTimestamp
-} from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
+import { getFirestore, doc, setDoc, getDoc, onSnapshot, updateDoc, arrayUnion, arrayRemove, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
 
-/* ==== ใส่ firebaseConfig ของคุณที่นี่ ==== */
 const firebaseConfig = {
   apiKey: "AIzaSyDceng5cmITvUqqTuMFSja0y4PSkhFmrmg",
   authDomain: "gemini-co-op-game.firebaseapp.com",
@@ -18,13 +15,12 @@ const firebaseConfig = {
   messagingSenderId: "387010923200",
   appId: "1:387010923200:web:082a20a7b94a59aea9bb25"
 };
-/* ======================================================= */
 
-// --- Global Variables & UI Refs ---
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
+// --- UI refs ---
 const createRoomBtn = document.getElementById('createRoomBtn');
 const joinRoomBtn = document.getElementById('joinRoomBtn');
 const joinArea = document.getElementById('joinArea');
@@ -45,6 +41,7 @@ const gameArea = document.getElementById('gameArea');
 const timerText = document.getElementById('timerText');
 const backToLobbyBtn = document.getElementById('backToLobbyBtn');
 
+// --- Local State ---
 let me = null;
 let currentRoomId = null;
 let roomUnsubscribe = null;
@@ -53,32 +50,29 @@ let ownerUid = null;
 let countdownInterval = null;
 let renderedStage = 0;
 
-// --- Helper & Utility Functions ---
-function makeRoomId(len = 6){
-  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-  let out = '';
-  for (let i=0;i<len;i++) out += chars.charAt(Math.floor(Math.random()*chars.length));
-  return out;
+// --- Helper Functions ---
+function makeRoomId(len = 6) {
+    const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+    let out = '';
+    for (let i = 0; i < len; i++) out += chars.charAt(Math.floor(Math.random() * chars.length));
+    return out;
 }
-
 function shuffleArray(array) {
-  for (let i = array.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [array[i], array[j]] = [array[j], array[i]];
-  }
-  return array;
+    for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+    }
+    return array;
 }
-
-function getRandomElement(arr) {
-    return arr[Math.floor(Math.random() * arr.length)];
+function getRandomElement(array) {
+    return array[Math.floor(Math.random() * array.length)];
 }
-
-function formatTime(sec){
-  sec = Number(sec || 0);
-  if (sec < 0) sec = 0;
-  const m = Math.floor(sec/60).toString().padStart(2,'0');
-  const s = (sec%60).toString().padStart(2,'0');
-  return `${m}:${s}`;
+function formatTime(sec) {
+    sec = Number(sec || 0);
+    if (sec < 0) sec = 0;
+    const m = Math.floor(sec / 60).toString().padStart(2, '0');
+    const s = (sec % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
 }
 
 // --- Auth & Lobby Logic ---
@@ -87,207 +81,195 @@ function initializeAuth() {
         if (user) {
             me = { uid: user.uid, name: (displayNameInput.value || 'ผู้เล่น') };
             console.log('Signed in:', me.uid);
+            displayNameInput.disabled = false;
             createRoomBtn.disabled = false;
             joinRoomBtn.disabled = false;
-            createRoomBtn.textContent = 'สร้างภารกิจใหม่';
-            joinRoomBtn.textContent = 'เข้าร่วมด้วยรหัส';
         } else {
-            me = null;
-            signInAnonymously(auth).catch((err)=>{
-                console.error('Auth error', err);
-                alert('ไม่สามารถเชื่อมต่อเพื่อยืนยันตัวตนได้');
-            });
+            signInAnonymously(auth).catch((err) => console.error('Anonymous sign-in error', err));
         }
     });
 }
 
-createRoomBtn.addEventListener('click', async ()=>{
-    if (!me) return alert('ยังไม่เชื่อมต่อ Firebase (รอสักครู่แล้วลองใหม่)');
+createRoomBtn.addEventListener('click', async () => {
+    if (!me) return alert('ยังไม่เชื่อมต่อ (รอสักครู่)');
     createRoomBtn.disabled = true;
     createRoomBtn.textContent = 'กำลังสร้าง...';
+    me.name = displayNameInput.value || ('ผู้เล่น-' + me.uid.slice(0, 4));
+    
+    const puzzle = generateAndValidatePuzzle();
+    if (!puzzle) {
+        alert('เกิดข้อผิดพลาดในการสร้างห้อง: ไม่สามารถสร้างปริศนาที่สมบูรณ์ได้');
+        createRoomBtn.disabled = false;
+        createRoomBtn.textContent = 'สร้างภารกิจใหม่';
+        return;
+    }
 
-    try {
-        me.name = displayNameInput.value || ('ผู้เล่น-' + me.uid.slice(0,4));
-        const roomId = makeRoomId(6);
-        const roomRef = doc(db, 'rooms', roomId);
-
-        const puzzle = generateAndValidatePuzzle(roomId);
-        if (!puzzle) {
-            throw new Error("ไม่สามารถสร้างปริศนาที่สมบูรณ์ได้ กรุณาลองอีกครั้ง");
+    const roomId = makeRoomId(6);
+    const roomRef = doc(db, 'rooms', roomId);
+    const initial = {
+        createdAt: serverTimestamp(),
+        owner: me.uid,
+        players: [{ uid: me.uid, name: me.name }],
+        status: 'waiting',
+        state: {
+            currentStage: 1,
+            defused: false,
+            timeLeft: 300,
+            puzzle: puzzle,
+            powerLevels: { a: puzzle.stage2.initialA, b: puzzle.stage2.initialB, c: puzzle.stage2.initialC },
+            logicGrid_playerPresses: []
         }
-
-        const initial = {
-            createdAt: serverTimestamp(),
-            owner: me.uid,
-            players: [{ uid: me.uid, name: me.name }],
-            status: 'waiting',
-            state: {
-                currentStage: 1,
-                defused: false,
-                timeLeft: 300,
-                puzzle: puzzle,
-                logicGrid_playerPresses: []
-            }
-        };
+    };
+    try {
         await setDoc(roomRef, initial);
         enterRoom(roomId);
     } catch (error) {
         console.error("Error creating room:", error);
-        alert('เกิดข้อผิดพลาดในการสร้างห้อง: ' + error.message);
+        alert("เกิดข้อผิดพลาดในการสร้างห้อง: " + error.message);
         createRoomBtn.disabled = false;
         createRoomBtn.textContent = 'สร้างภารกิจใหม่';
     }
 });
 
-joinRoomBtn.addEventListener('click', ()=>{
-  joinArea.classList.toggle('hidden');
+joinRoomBtn.addEventListener('click', () => {
+    joinArea.classList.toggle('hidden');
 });
 
-joinConfirmBtn.addEventListener('click', async ()=>{
-  const rid = (roomIdInput.value || '').trim().toUpperCase();
-  if (!rid) return alert('กรุณาใส่รหัสห้อง');
-  const ref = doc(db, 'rooms', rid);
-  const snap = await getDoc(ref);
-  if (!snap.exists()) return alert('ไม่พบห้องนี้');
-  const data = snap.data();
-  if (data.players && data.players.length >= 2 && !data.players.find(p => p.uid === me.uid)) {
-    return alert('ห้องเต็มแล้ว');
-  }
-  me.name = displayNameInput.value || ('ผู้เล่น-' + me.uid.slice(0,4));
-  await updateDoc(ref, { players: arrayUnion({ uid: me.uid, name: me.name }) });
-  enterRoom(rid);
+joinConfirmBtn.addEventListener('click', async () => {
+    const rid = (roomIdInput.value || '').trim().toUpperCase();
+    if (!rid) return alert('กรุณาใส่รหัสห้อง');
+    const ref = doc(db, 'rooms', rid);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return alert('ไม่พบห้องนี้');
+    const data = snap.data();
+    if (data.players && data.players.length >= 2 && !data.players.find(p => p.uid === me.uid)) {
+        return alert('ห้องเต็มแล้ว');
+    }
+    me.name = displayNameInput.value || ('ผู้เล่น-' + me.uid.slice(0, 4));
+    await updateDoc(ref, { players: arrayUnion({ uid: me.uid, name: me.name }) });
+    enterRoom(rid);
 });
 
-leaveRoomBtn.addEventListener('click', async ()=>{
-  if (!currentRoomId) return;
-  await cleanupRoom();
-  showLobby();
+leaveRoomBtn.addEventListener('click', async () => {
+    await cleanupRoom();
 });
 
-startGameBtn.addEventListener('click', async ()=>{
-  if (!currentRoomId) return;
-  const ref = doc(db, 'rooms', currentRoomId);
-  await updateDoc(ref, { status: 'playing', 'state.timeLeft': 300 });
+startGameBtn.addEventListener('click', async () => {
+    if (!currentRoomId) return;
+    const ref = doc(db, 'rooms', currentRoomId);
+    await updateDoc(ref, { status: 'playing' });
 });
 
-backToLobbyBtn.addEventListener('click', ()=>{
-  if (currentRoomId) {
-    leaveRoomBtn.click();
-  } else {
-    showLobby();
-  }
+backToLobbyBtn.addEventListener('click', async () => {
+    await cleanupRoom();
 });
+
+// =================================================================
+// STAGE 1: CONDITIONAL WIRING (Architecture v2: Solution-First)
+// =================================================================
 
 // --- Puzzle Generation (Stage 1 only) ---
 function generateStage1Puzzle() {
-    const symbolPool = ['⍰','↟','⍼','⟐','⨳','⩻','⪢','⟁'];
-    const colorPool = ['red', 'blue', 'yellow', 'green'];
+    const colors = ['red', 'blue', 'green', 'yellow', 'white'];
+    const symbols = ['★', '●', '▲', '■', '◆'];
+
+    // 1. Generate a random wire scenario first
     const wiresOnBomb = [];
     for (let i = 0; i < 4; i++) {
         wiresOnBomb.push({
             id: i,
-            symbol: getRandomElement(symbolPool),
-            color: getRandomElement(colorPool)
+            color: getRandomElement(colors),
+            symbol: getRandomElement(symbols)
         });
     }
 
-    const stage1RuleLibrary = [
-        { id: 'S1_R1', description: "ถ้ามีสายไฟสี <b>แดง</b> มากกว่า 1 เส้น", subDescription: "→ ให้ตัดสายไฟสี <b>แดง</b> เส้นสุดท้าย" },
-        { id: 'S1_R2', description: "ถ้า <b>ไม่มี</b> สายไฟสี <b>น้ำเงิน</b> เลย", subDescription: "→ ให้ตัดสายไฟเส้นที่ <b>สอง</b>" },
-        { id: 'S1_R3', description: "ถ้ามีสายไฟสี <b>เหลือง</b> เพียงเส้นเดียว", subDescription: "→ ให้ตัดสายไฟสี <b>เหลือง</b> เส้นนั้น" },
-        { id: 'S1_R4', description: "ถ้ามีสายไฟสัญลักษณ์ <b>⟐</b>", subDescription: "→ ให้ตัดสายไฟสัญลักษณ์ <b>↟</b> (ถ้ามี)" },
-        { id: 'S1_R5', description: "ถ้าสายไฟเส้น <b>สุดท้าย</b> เป็นสี <b>เขียว</b>", subDescription: "→ ให้ตัดสายไฟเส้น <b>แรก</b>" },
-        { id: 'S1_R6', description: "ถ้ามีสายไฟสี <b>เขียว</b> อย่างน้อย 2 เส้น", subDescription: "→ ให้ตัดสายไฟเส้นที่ <b>สาม</b>" },
-        { id: 'S1_R7', description: "ถ้า <b>ไม่มี</b> สัญลักษณ์ <b>⍰</b> เลย", subDescription: "→ ให้ตัดสายไฟสี <b>น้ำเงิน</b> เส้นแรก (ถ้ามี)" },
-        { id: 'S1_R8', description: "ถ้าสายไฟ <b>ทุกเส้น</b> เป็นสีเดียวกัน", subDescription: "→ ให้ตัดสายไฟเส้น <b>สุดท้าย</b>" },
+    // 2. Determine the correct wire to cut based on this specific scenario
+    const counts = wiresOnBomb.reduce((acc, wire) => {
+        acc[wire.color] = (acc[wire.color] || 0) + 1;
+        return acc;
+    }, {});
+    
+    let correctWireIndex;
+    let activeRuleId;
+
+    if (counts.green >= 2) {
+        correctWireIndex = 2; // Cut the third wire
+        activeRuleId = 'S1_R1';
+    } else if (counts.yellow === 1) {
+        correctWireIndex = wiresOnBomb.findIndex(w => w.color === 'yellow');
+        activeRuleId = 'S1_R2';
+    } else if (Object.keys(counts).length === 1) {
+        correctWireIndex = 3; // Cut the last wire
+        activeRuleId = 'S1_R3';
+    } else {
+        correctWireIndex = 0; // Cut the first wire
+        activeRuleId = 'S1_R4';
+    }
+
+    // 3. Define all possible rules, including the one that is true
+    const ruleLibrary = [
+        { id: 'S1_R1', description: 'ถ้ามีสายไฟสีเขียวอย่างน้อย 2 เส้น → ให้ตัดสายไฟเส้นที่สาม' },
+        { id: 'S1_R2', description: 'ถ้ามีสายไฟสีเหลืองเพียงเส้นเดียว → ให้ตัดสายไฟสีเหลืองเส้นนั้น' },
+        { id: 'S1_R3', description: 'ถ้าสายไฟทุกเส้นเป็นสีเดียวกัน → ให้ตัดสายไฟเส้นสุดท้าย' },
+        { id: 'S1_R4', description: 'มิเช่นนั้น (ถ้าไม่มีกฎข้อไหนตรงเลย) → ให้ตัดสายไฟเส้นแรก' }
     ];
-    
-    const stage1Rules = shuffleArray([...stage1RuleLibrary])
-        .slice(0, 3)
-        .map(rule => ({ id: rule.id, description: rule.description, subDescription: rule.subDescription }));
-    
-    stage1Rules.push({ id: 'S1_DEFAULT', description: "มิเช่นนั้น (ถ้าไม่มีกฎข้อไหนตรงเลย)", subDescription: "→ ให้ตัดสายไฟเส้น <b>แรก</b>" });
-    return { wiresOnBomb, rules: stage1Rules };
+
+    const activeRule = ruleLibrary.find(r => r.id === activeRuleId);
+    const decoyRules = shuffleArray(ruleLibrary.filter(r => r.id !== activeRuleId)).slice(0, 3);
+
+    // 4. Assemble the puzzle
+    return {
+        wiresOnBomb: wiresOnBomb,
+        rulesForManual: shuffleArray([activeRule, ...decoyRules]),
+        correctWireId: correctWireIndex
+    };
 }
 
 // --- Rendering & Handling (Stage 1 only) ---
 function renderStage1(roomData) {
-  const puzzleState = roomData.state.puzzle.stage1;
-  if (localRole === 'Tech Expert') {
-    const info = document.createElement('p');
-    info.className = 'muted';
-    info.innerHTML = '<b>คู่มือด่าน 1:</b> ตรวจสอบกฎตามลำดับ และทำตามกฎข้อแรกที่เป็นจริง';
-    const manualList = document.createElement('ol');
-    manualList.className = 'manual-list';
-    puzzleState.rules.forEach(rule => {
-        const li = document.createElement('li');
-        li.innerHTML = `${rule.description}<div class="sub-rule">${rule.subDescription}</div>`;
-        manualList.appendChild(li);
-    });
-    gameArea.append(info, manualList);
-  } else { // Field Agent
-    const info = document.createElement('p');
-    info.className = 'muted';
-    info.textContent = 'รายงานข้อมูลสายไฟทั้งหมดให้ผู้เชี่ยวชาญทราบ';
-    const wireContainer = document.createElement('div');
-    wireContainer.className = 'wire-container';
-    puzzleState.wiresOnBomb.forEach(wire => {
-        const wireEl = document.createElement('div');
-        wireEl.className = 'wire';
-        wireEl.dataset.wireId = wire.id;
-        const symbolSpan = document.createElement('span');
-        symbolSpan.textContent = wire.symbol;
-        const colorIndicator = document.createElement('div');
-        colorIndicator.className = `wire-color-indicator wire-color-${wire.color}`;
-        wireEl.append(symbolSpan, colorIndicator);
-        wireEl.addEventListener('click', () => handleWireCut(wire.id));
-        wireContainer.appendChild(wireEl);
-    });
-    gameArea.append(info, wireContainer);
-  }
+    const puzzleState = roomData.state.puzzle.stage1;
+    if (localRole === 'Tech Expert') {
+        const info = document.createElement('p');
+        info.className = 'muted';
+        info.innerHTML = '<b>คู่มือด่าน 1: ตรวจสอบกฎตามลำดับ และทำตามกฎข้อแรกที่เป็นจริง</b>';
+        
+        const manualList = document.createElement('ol');
+        manualList.className = 'manual-list';
+        puzzleState.rulesForManual.forEach(rule => {
+            const li = document.createElement('li');
+            li.textContent = rule.description;
+            manualList.appendChild(li);
+        });
+        gameArea.append(info, manualList);
+    } else { // Field Agent
+        const info = document.createElement('p');
+        info.className = 'muted';
+        info.textContent = 'รายงานข้อมูลสายไฟทั้งหมดให้ผู้เชี่ยวชาญทราบ';
+        
+        const wireContainer = document.createElement('div');
+        wireContainer.className = 'wire-container';
+        puzzleState.wiresOnBomb.forEach(wire => {
+            const wireEl = document.createElement('div');
+            wireEl.className = 'wire';
+            wireEl.innerHTML = `<span class="wire-symbol">${wire.symbol}</span><div class="wire-color ${wire.color}"></div>`;
+            
+            // IMPORTANT: Only make the correct wire clickable
+            if (wire.id === puzzleState.correctWireId) {
+                wireEl.classList.add('clickable');
+                wireEl.onclick = () => handleWireCut(wire.id);
+            }
+            wireContainer.appendChild(wireEl);
+        });
+        gameArea.append(info, wireContainer);
+    }
 }
 
 async function handleWireCut(cutWireId) {
     const roomRef = doc(db, 'rooms', currentRoomId);
-    const snap = await getDoc(roomRef);
-    const data = snap.data();
-    if (data.status !== 'playing' || !data.state.puzzle) return;
-
-    const wires = data.state.puzzle.stage1.wiresOnBomb;
-    const rulesFromDB = data.state.puzzle.stage1.rules;
-    if (!Array.isArray(rulesFromDB)) return;
-
-    const stage1RuleLibrary = [
-        { id: 'S1_R1', condition: (w) => w.filter(c => c.color === 'red').length > 1, action: (w) => w.filter(c => c.color === 'red').pop() },
-        { id: 'S1_R2', condition: (w) => !w.some(c => c.color === 'blue'), action: (w) => w[1] },
-        { id: 'S1_R3', condition: (w) => w.filter(c => c.color === 'yellow').length === 1, action: (w) => w.find(c => c.color === 'yellow') },
-        { id: 'S1_R4', condition: (w) => w.some(c => c.symbol === '⟐'), action: (w) => w.find(c => c.symbol === '↟') },
-        { id: 'S1_R5', condition: (w) => w[3].color === 'green', action: (w) => w[0] },
-        { id: 'S1_R6', condition: (w) => w.filter(c => c.color === 'green').length >= 2, action: (w) => w[2] },
-        { id: 'S1_R7', condition: (w) => !w.some(c => c.symbol === '⍰'), action: (w) => w.find(c => c.color === 'blue') },
-        { id: 'S1_R8', condition: (w) => new Set(w.map(c => c.color)).size === 1, action: (w) => w[3] },
-        { id: 'S1_DEFAULT', condition: () => true, action: (w) => w[0] },
-    ];
-
-    let correctWireToCut = null;
-    for (const ruleData of rulesFromDB) {
-        const ruleLogic = stage1RuleLibrary.find(libRule => libRule.id === ruleData.id);
-        if (ruleLogic && ruleLogic.condition(wires)) {
-            correctWireToCut = ruleLogic.action(wires);
-            break;
-        }
-    }
-
-    if (!correctWireToCut) {
-        await updateDoc(roomRef, { status: 'finished', 'state.defused': false });
-        return;
-    }
-    if (cutWireId === correctWireToCut.id) {
-        await updateDoc(roomRef, { 'state.currentStage': 2 });
-    } else {
-        await updateDoc(roomRef, { status: 'finished', 'state.defused': false });
-    }
+    // No need to check correctness here, as only the correct wire is clickable
+    await updateDoc(roomRef, { 'state.currentStage': 2 });
 }
+
 // =================================================================
 // Defuse Duo - script.js (STAGE-BASED SPLIT - 2/4)
 // Stage 2 Logic (Generation, Rendering, Handling)
