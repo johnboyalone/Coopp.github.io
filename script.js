@@ -467,7 +467,7 @@ function generateFullPuzzle(roomId) {
 }
 // =================================================================
 // Defuse Duo - script.js (HIGH REPLAYABILITY UPDATE)
-// PART 2 OF 3 - CORRECTED
+// PART 2 OF 3 - FINAL CORRECTION
 // =================================================================
 
 // -----------------------------------------------------------------
@@ -512,7 +512,11 @@ function generateFullPuzzle(roomId) {
     { id: 'S1_R8', description: "ถ้าสายไฟ <b>ทุกเส้น</b> เป็นสีเดียวกัน", subDescription: "→ ให้ตัดสายไฟเส้น <b>สุดท้าย</b>" },
   ];
   
-  const stage1Rules = shuffleArray([...stage1RuleLibrary]).slice(0, 3).map(rule => ({ id: rule.id, description: rule.description, subDescription: rule.subDescription }));
+  // **** FIXED HERE: Explicitly map to remove function properties ****
+  const stage1Rules = shuffleArray([...stage1RuleLibrary])
+    .slice(0, 3)
+    .map(rule => ({ id: rule.id, description: rule.description, subDescription: rule.subDescription }));
+  
   stage1Rules.push({ id: 'S1_DEFAULT', description: "มิเช่นนั้น (ถ้าไม่มีกฎข้อไหนตรงเลย)", subDescription: "→ ให้ตัดสายไฟเส้น <b>แรก</b>" });
   const stage1Data = { wiresOnBomb, rules: stage1Rules };
 
@@ -546,7 +550,6 @@ function generateFullPuzzle(roomId) {
   }
   if (attempts >= 50) { return generateFullPuzzle(roomId); }
   const targetSum = targetA + targetB + targetC;
-  // **** FIXED HERE: Only store the ID and description, not the whole object with the 'check' function ****
   const stage2Data = { initialA, initialB, initialC, targetSum, condition: { id: selectedCondition.id, description: selectedCondition.description } };
 
   // --- STAGE 3: IDENTITY VERIFICATION (DYNAMIC CLUES) ---
@@ -598,11 +601,11 @@ function generateFullPuzzle(roomId) {
       { id: 'S4_M5', description: "กฎพิเศษ: ไม่มีกฎพิเศษ" },
   ];
   const selectedModifier = getRandomElement(stage4ModifierLibrary);
-  // **** FIXED HERE: Only store the ID and description, not the whole object with the 'apply' function ****
   const stage4Data = { flashSequence, colorMap, modifier: { id: selectedModifier.id, description: selectedModifier.description } };
 
   return { stage1: stage1Data, stage2: stage2Data, stage3: stage3Data, stage4: stage4Data };
 }
+
 // =================================================================
 // Defuse Duo - script.js (HIGH REPLAYABILITY UPDATE)
 // PART 3 OF 3 - CORRECTED
