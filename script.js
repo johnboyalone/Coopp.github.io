@@ -1,5 +1,5 @@
 // =================================================================
-// Defuse Duo - script.js (Complete & Final Version)
+// Defuse Duo - script.js (Complete & Final Version - Corrected)
 // PART 1 OF 3
 // =================================================================
 
@@ -330,7 +330,7 @@ window.addEventListener('beforeunload', async ()=>{
   }
 });
 // =================================================================
-// Defuse Duo - script.js (Complete & Final Version)
+// Defuse Duo - script.js (Complete & Final Version - Corrected)
 // PART 2 OF 3
 // =================================================================
 
@@ -459,7 +459,7 @@ function generateFullPuzzle(roomId) {
   return { stage1: stage1Data, stage2: stage2Data, stage3: stage3Data, stage4: stage4Data };
 }
 // =================================================================
-// Defuse Duo - script.js (Complete & Final Version)
+// Defuse Duo - script.js (Complete & Final Version - Corrected)
 // PART 3 OF 3
 // =================================================================
 
@@ -641,52 +641,7 @@ async function handleCalibrationConfirm() {
     await updateDoc(roomRef, { 'state.currentStage': 3 });
 }
 
-  // --- STAGE 3: IDENTITY VERIFICATION ---
-  const iconPool = ['👤', '🕵️', '👩‍🔬', '👨‍✈️', '👩‍🚀', '👨‍💻'];
-  const codenamePool = ['Viper', 'Ghost', 'Raven', 'Shadow', 'Echo', 'Wraith'];
-  const statusPool = ['Active', 'Unknown', 'Retired', 'MIA'];
-  const affiliationPool = ['Syndicate', 'Phantoms', 'Omega', 'Protocol'];
-
-  const allSuspects = [];
-  const shuffledIcons = shuffleArray([...iconPool]);
-  const shuffledCodenames = shuffleArray([...codenamePool]);
-  const shuffledStatuses = shuffleArray([...statusPool]);
-  const shuffledAffiliations = shuffleArray([...affiliationPool]);
-
-  for (let i = 0; i < 4; i++) {
-      allSuspects.push({
-          id: i,
-          icon: shuffledIcons[i],
-          codename: shuffledCodenames[i],
-          status: shuffledStatuses[i],
-          affiliation: shuffledAffiliations[i]
-      });
-  }
-
-  const correctSuspect = allSuspects[Math.floor(Math.random() * 4)];
-  const wrongSuspects = allSuspects.filter(s => s.id !== correctSuspect.id);
-
-  const stage3Rules = [];
-  // Rule 1: A positive, direct fact about the correct suspect
-  stage3Rules.push({ description: `เป้าหมายมีสถานะเป็น "${correctSuspect.status}".` });
-  // Rule 2: A negative fact about a wrong suspect
-  const wrong1 = wrongSuspects[0];
-  stage3Rules.push({ description: `เป้าหมายไม่ได้สังกัดกลุ่ม "${wrong1.affiliation}".` });
-  // Rule 3: A conditional fact that is true for the correct suspect
-  stage3Rules.push({ description: `ถ้าเป้าหมายใช้ไอคอน ${correctSuspect.icon}, เขาจะชื่อรหัส "${correctSuspect.codename}".` });
-  // Rule 4: A negative fact about another wrong suspect's icon
-  const wrong2 = wrongSuspects[1];
-  stage3Rules.push({ description: `เป้าหมายไม่ได้ใช้ไอคอน ${wrong2.icon}.` });
-  // Rule 5: A disjunction (OR statement) that is true
-  const wrong3 = wrongSuspects[2];
-  stage3Rules.push({ description: `เป้าหมายสังกัดกลุ่ม "${correctSuspect.affiliation}" หรือไม่ก็กลุ่ม "${wrong3.affiliation}".` });
-
-  const stage3Data = {
-      suspects: shuffleArray(allSuspects), // Shuffle the order for the Field Agent
-      rules: shuffleArray(stage3Rules), // Shuffle the rules for the Tech Expert
-      correctSuspectId: correctSuspect.id
-  };
-
+// --- STAGE 3: IDENTITY VERIFICATION ---
 function renderStage3(roomData) {
   const puzzleState = roomData.state.puzzle.stage3;
   if (localRole === 'Tech Expert') {
