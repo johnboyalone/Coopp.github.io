@@ -605,10 +605,9 @@ function generateFullPuzzle(roomId) {
 
   return { stage1: stage1Data, stage2: stage2Data, stage3: stage3Data, stage4: stage4Data };
 }
-
 // =================================================================
 // Defuse Duo - script.js (HIGH REPLAYABILITY UPDATE)
-// PART 3 OF 3 - CORRECTED
+// PART 3 OF 3 - FINAL CORRECTION 2
 // =================================================================
 
 // -----------------------------------------------------------------
@@ -702,7 +701,6 @@ async function handleWireCut(cutWireId) {
     const rulesFromDB = data.state.puzzle.stage1.rules;
     if (!Array.isArray(rulesFromDB)) return; 
 
-    // **** FIXED HERE: Re-create the full rule library on the client to find the logic ****
     const stage1RuleLibrary = [
         { id: 'S1_R1', condition: (w) => w.filter(c => c.color === 'red').length > 1, action: (w) => w.filter(c => c.color === 'red').pop() },
         { id: 'S1_R2', condition: (w) => !w.some(c => c.color === 'blue'), action: (w) => w[1] },
@@ -790,7 +788,6 @@ function renderStage2(roomData) {
     gameArea.append(info, displayContainer, controlContainer);
     let currentA = puzzleState.initialA, currentB = puzzleState.initialB, currentC = puzzleState.initialC;
     
-    // **** FIXED HERE: Re-create the library on the client to find the correct 'check' function ****
     const stage2ConditionLibrary = [
         { id: 'S2_C1', check: (a,b,c) => a > c && b % 20 === 0 },
         { id: 'S2_C2', check: (a,b,c) => c > b && a % 50 === 0 },
@@ -954,7 +951,6 @@ async function handleLogicGridPress(color) {
     const puzzle = state.puzzle.stage4;
     const playerPresses = state.logicGrid_playerPresses || [];
 
-    // **** FIXED HERE: Re-create the library on the client to find the correct 'apply' function ****
     const stage4ModifierLibrary = [
         { id: 'S4_M1', apply: (seq) => seq.reverse() },
         { id: 'S4_M2', apply: (seq) => { const temp = seq[1]; seq[1] = seq[3]; seq[3] = temp; return seq; } },
