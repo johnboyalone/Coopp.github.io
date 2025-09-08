@@ -1,4 +1,4 @@
-l// =================================================================
+// =================================================================
 // Defuse Duo - script.js (Updated with New Stage 3)
 // PART 1 OF 3
 // =================================================================
@@ -615,7 +615,6 @@ async function handleWireCut(cutWireId) {
             await updateDoc(roomRef, { status: 'finished', 'state.defused': false, 'state.strikes': newStrikes, 'state.timeLeft': newTime });
         } else {
             await updateDoc(roomRef, { 'state.strikes': newStrikes, 'state.timeLeft': newTime });
-            // Re-render to show strike feedback if needed
             renderedStage = 0;
         }
     } else {
@@ -640,7 +639,7 @@ function renderStage2(roomData) {
                           <li>ค่าพลังงานของแกน <b>B</b> ต้องเป็นเลขคู่ (ลงท้ายด้วย 0)</li>
                           <li>ห้ามให้ค่าพลังงานของแกนใดแกนหนึ่งติดลบ</li>
                         </ul>
-                        <p style="color: var(--danger-text);"><b>คำเตือน:</b> หากเจ้าหน้าที่ภาคสนามกดปุ่มรีเซ็ตฉุกเฉิน เวลาจะลดลง 20 วินาที และค่าพลังงานจะกลับไปที่ค่าเริ่มต้น</p>`;
+                        <p style="color: var(--danger);"><b>คำเตือน:</b> หากเจ้าหน้าที่ภาคสนามกดปุ่มรีเซ็ตฉุกเฉิน เวลาจะลดลง 20 วินาที และค่าพลังงานจะกลับไปที่ค่าเริ่มต้น</p>`;
     gameArea.append(info, manual);
   } else { // Field Agent
     const info = document.createElement('p');
@@ -671,7 +670,7 @@ function renderStage2(roomData) {
     btnPlusB.title = '+10 to B, -10 to C';
     const resetBtn = document.createElement('button');
     resetBtn.id = 'resetCalibrationBtn';
-    resetBtn.className = 'btn-danger';
+    resetBtn.style.backgroundColor = 'var(--danger)';
     resetBtn.textContent = 'RESET';
     resetBtn.title = 'รีเซ็ตค่าพลังงาน (เวลา -20 วินาที!)';
     const confirmBtn = document.createElement('button');
@@ -751,7 +750,6 @@ function renderStage3(roomData) {
         const panel = document.createElement('div');
         panel.className = 'detonator-panel';
 
-        // Part 1: Switches
         const switchBox = document.createElement('div');
         switchBox.className = 'detonator-section';
         switchBox.innerHTML = `<label>แผงสวิตช์จ่ายไฟ (สถานะ: <span class="led-light ${puzzleData.ledColor}">${puzzleData.ledColor.toUpperCase()}</span>)</label>`;
@@ -770,7 +768,6 @@ function renderStage3(roomData) {
         });
         switchBox.appendChild(switchGrid);
 
-        // Part 2: Levers
         const leverBox = document.createElement('div');
         leverBox.className = 'detonator-section';
         leverBox.innerHTML = `<label>คันโยกปรับแรงดัน</label>`;
@@ -790,7 +787,6 @@ function renderStage3(roomData) {
         });
         leverBox.appendChild(leverGrid);
 
-        // Part 3: Confirmation
         const confirmBox = document.createElement('div');
         confirmBox.className = 'detonator-section';
         confirmBox.innerHTML = `
@@ -811,7 +807,6 @@ async function handleDetonatorConfirm() {
     const data = snap.data();
     if (data.status !== 'playing') return;
 
-    // Collect player's inputs
     const playerSwitches = [
         document.getElementById('switch-0').checked,
         document.getElementById('switch-1').checked,
@@ -825,33 +820,28 @@ async function handleDetonatorConfirm() {
     ];
     const playerCode = parseInt(document.getElementById('confirm-code').value);
 
-    // Get correct solution from DB
     const solution = data.state.puzzle.stage3.solution;
 
-    // Check for correctness
     const isSwitchesCorrect = JSON.stringify(playerSwitches) === JSON.stringify(solution.switches);
     const isLeversCorrect = JSON.stringify(playerLevers.sort()) === JSON.stringify(solution.levers.sort());
     const isCodeCorrect = playerCode === solution.code;
 
     if (isSwitchesCorrect && isLeversCorrect && isCodeCorrect) {
-        // Success
         await updateDoc(roomRef, { 'state.currentStage': 4 });
     } else {
-        // Failure - Apply penalty and reset puzzle
         const newTime = Math.max(0, data.state.timeLeft - 45);
         const newStrikes = (data.state.strikes || 0) + 1;
 
         if (newStrikes >= 3 || newTime <= 0) {
             await updateDoc(roomRef, { status: 'finished', 'state.defused': false, 'state.strikes': newStrikes, 'state.timeLeft': newTime });
         } else {
-            // Regenerate just stage 3 puzzle
             const newStage3Puzzle = generateStage3Puzzle(currentRoomId, data.state.puzzle.stage1);
             await updateDoc(roomRef, {
                 'state.strikes': newStrikes,
                 'state.timeLeft': newTime,
                 'state.puzzle.stage3': newStage3Puzzle
             });
-            renderedStage = 0; // Force re-render
+            renderedStage = 0;
         }
     }
 }
