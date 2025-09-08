@@ -476,11 +476,11 @@ function generateStage3Puzzle() {
     const codenamePool = ['Viper', 'Ghost', 'Raven', 'Shadow', 'Echo', 'Wraith', 'Nomad', 'Spectre'];
     const statusPool = ['Active', 'Unknown', 'Retired', 'MIA'];
     const affiliationPool = ['Syndicate', 'Phantoms', 'Omega', 'Protocol'];
-    
+
     const allSuspects = [];
     const shuffledIcons = shuffleArray([...iconPool]);
     const shuffledCodenames = shuffleArray([...codenamePool]);
-    
+
     for (let i = 0; i < 4; i++) {
         allSuspects.push({
             id: i,
@@ -490,30 +490,30 @@ function generateStage3Puzzle() {
             affiliation: getRandomElement(affiliationPool)
         });
     }
-    
+
     const correctSuspect = getRandomElement(allSuspects);
     const wrongSuspects = allSuspects.filter(s => s.id !== correctSuspect.id);
-    
-    // Ensure there are enough unique wrong suspects for clue generation
+
+    // This check is important for clue generation
     if (wrongSuspects.length < 3) {
-        // This is a rare edge case, but good to handle.
-        // We can just rerun the generation.
-        return generateStage3Puzzle();
+        return generateStage3Puzzle(); // Rerun if we don't have enough unique wrong suspects
     }
 
     const clueTemplates = [
-        { gen: (c, w) => `เป้าหมายมีสถานะเป็น "${c.status}".` },
-        { gen: (c, w) => `เป้าหมายไม่ได้สังกัดกลุ่ม "${w[0].affiliation}".` },
-        { gen: (c, w) => `ถ้าเป้าหมายใช้ไอคอน ${c.icon}, เขาจะชื่อรหัส "${c.codename}".` },
-        { gen: (c, w) => `เป้าหมายสังกัดกลุ่ม "${c.affiliation}" หรือไม่ก็กลุ่ม "${w[1].affiliation}".` },
-        { gen: (c, w) => `ผู้ต้องสงสัยที่ชื่อรหัส "${w[0].codename}" และเป้าหมายของเรา มีสถานะเดียวกัน.` },
-        { gen: (c, w) => `มีผู้ต้องสงสัยเพียง ${allSuspects.filter(s => s.status === w[2].status).length} คนที่มีสถานะเป็น "${w[2].status}".` },
+        { id: 'S3_T1', gen: (c, w) => `เป้าหมายมีสถานะเป็น "${c.status}".` },
+        { id: 'S3_T2', gen: (c, w) => `เป้าหมายไม่ได้สังกัดกลุ่ม "${w[0].affiliation}".` },
+        { id: 'S3_T3', gen: (c, w) => `ถ้าเป้าหมายใช้ไอคอน ${c.icon}, เขาจะชื่อรหัส "${c.codename}".` },
+        { id: 'S3_T4', gen: (c, w) => `เป้าหมายสังกัดกลุ่ม "${c.affiliation}" หรือไม่ก็กลุ่ม "${w[1].affiliation}".` },
+        { id: 'S3_T5', gen: (c, w) => `ผู้ต้องสงสัยที่ชื่อรหัส "${w[0].codename}" และเป้าหมายของเรา มีสถานะเดียวกัน.` },
+        { id: 'S3_T6', gen: (c, w) => `มีผู้ต้องสงสัยเพียง ${allSuspects.filter(s => s.status === w[2].status).length} คนที่มีสถานะเป็น "${w[2].status}".` },
+        { id: 'S3_T7', gen: (c, w) => `เป้าหมายไม่ได้ใช้ชื่อรหัส "${w[1].codename}".` },
+        { id: 'S3_T8', gen: (c, w) => `ในบรรดาผู้ต้องสงสัยทั้งหมด มี ${allSuspects.filter(s => s.affiliation === c.affiliation).length} คนที่สังกัดกลุ่มเดียวกับเป้าหมาย.` }
     ];
-    
+
     const stage3Rules = shuffleArray(clueTemplates)
         .slice(0, 5)
         .map(template => ({ description: template.gen(correctSuspect, wrongSuspects) }));
-        
+
     return {
         suspects: shuffleArray(allSuspects),
         rules: stage3Rules,
@@ -528,7 +528,7 @@ function renderStage3(roomData) {
     const info = document.createElement('p');
     info.className = 'muted';
     info.innerHTML = '<b>คู่มือด่าน 3: ฐานข้อมูลข่าวกรอง</b><br>ใช้ข้อมูลนี้เพื่อระบุตัวตนเป้าหมายที่แท้จริง';
-    
+
     const manualList = document.createElement('ol');
     manualList.className = 'manual-list';
     puzzleState.rules.forEach(rule => {
@@ -536,16 +536,16 @@ function renderStage3(roomData) {
         li.textContent = rule.description;
         manualList.appendChild(li);
     });
-    
+
     gameArea.append(info, manualList);
   } else { // Field Agent
     const info = document.createElement('p');
     info.className = 'muted';
     info.textContent = 'รายงานข้อมูลผู้ต้องสงสัยทั้งหมด แล้วเลือกเป้าหมายตามที่ผู้เชี่ยวชาญระบุ';
-    
+
     const suspectContainer = document.createElement('div');
     suspectContainer.className = 'suspect-container';
-    
+
     puzzleState.suspects.forEach(suspect => {
       const card = document.createElement('div');
       card.className = 'suspect-card';
@@ -555,7 +555,7 @@ function renderStage3(roomData) {
         card.classList.add('selected');
         await handleIdentityConfirm(suspect.id);
       };
-      
+
       card.innerHTML = `
         <div class="suspect-icon">${suspect.icon}</div>
         <div class="suspect-details">
@@ -563,10 +563,10 @@ function renderStage3(roomData) {
           <div class="suspect-info">สถานะ: ${suspect.status}</div>
           <div class="suspect-info">สังกัด: ${suspect.affiliation}</div>
         </div>`;
-        
+
       suspectContainer.appendChild(card);
     });
-    
+
     gameArea.append(info, suspectContainer);
   }
 }
@@ -575,9 +575,9 @@ async function handleIdentityConfirm(selectedSuspectId) {
     const roomRef = doc(db, 'rooms', currentRoomId);
     const currentSnap = await getDoc(roomRef);
     if (currentSnap.data().status !== 'playing') return;
-    
+
     const correctSuspectId = currentSnap.data().state.puzzle.stage3.correctSuspectId;
-    
+
     if (selectedSuspectId === correctSuspectId) {
         await updateDoc(roomRef, { 'state.currentStage': 4 });
     } else {
@@ -593,11 +593,11 @@ async function handleIdentityConfirm(selectedSuspectId) {
 function generateStage4Puzzle() {
     const colors = ['red', 'blue', 'green', 'yellow'];
     const flashSequence = Array(5).fill(0).map(() => getRandomElement(colors));
-    
+
     const colorMap = {};
     const shuffledColors = shuffleArray([...colors]);
     colors.forEach((color, i) => { colorMap[color] = shuffledColors[i]; });
-    
+
     const stage4ModifierLibrary = [
         { id: 'S4_M1', description: "กฎพิเศษ: ลำดับการกดทั้งหมดต้องย้อนกลับ (Reverse)" },
         { id: 'S4_M2', description: "กฎพิเศษ: ให้สลับการกดลำดับที่ 2 กับลำดับที่ 4" },
@@ -606,7 +606,7 @@ function generateStage4Puzzle() {
         { id: 'S4_M5', description: "กฎพิเศษ: ไม่มีกฎพิเศษ" },
     ];
     const selectedModifier = getRandomElement(stage4ModifierLibrary);
-    
+
     return { flashSequence, colorMap, modifier: { id: selectedModifier.id, description: selectedModifier.description } };
 }
 
@@ -619,18 +619,17 @@ function generateAndValidatePuzzle() {
             const stage2 = generateStage2Puzzle();
             const stage3 = generateStage3Puzzle();
             const stage4 = generateStage4Puzzle();
-            
-            // If all stages generate successfully, return the complete puzzle object
+
             if (stage1 && stage2 && stage3 && stage4) {
                 return { stage1, stage2, stage3, stage4 };
             }
         } catch (e) {
-            console.warn("A stage failed to generate, retrying...", e.message);
+            console.error("A stage failed to generate, retrying...", e.message);
         }
         attempts++;
     }
-    console.error("Failed to generate a valid puzzle after multiple attempts.");
-    return null; // Return null if it fails repeatedly
+    console.error("CRITICAL: Failed to generate a valid puzzle after multiple attempts.");
+    return null;
 }
 
 // --- Rendering & Handling (Stage 4 only) ---
@@ -640,23 +639,23 @@ function renderStage4(roomData) {
         const info = document.createElement('p');
         info.className = 'muted';
         info.innerHTML = '<b>คู่มือด่าน 4: ตารางรหัสสี</b><br>บอกเจ้าหน้าที่ภาคสนามให้กดสีตามตารางนี้';
-        
+
         const grid = document.createElement('div');
         grid.className = 'manual-grid';
         Object.entries(puzzleState.colorMap).forEach(([key, value]) => {
             grid.innerHTML += `<div><span class="color-box ${key}">${key.charAt(0).toUpperCase()}</span> → <span class="color-box ${value}">${value.charAt(0).toUpperCase()}</span></div>`;
         });
-        
+
         const modifierInfo = document.createElement('p');
         modifierInfo.className = 'manual-list';
         modifierInfo.innerHTML = `<b>${puzzleState.modifier.description}</b>`;
-        
+
         gameArea.append(info, grid, modifierInfo);
     } else { // Field Agent
         const info = document.createElement('p');
         info.className = 'muted';
         info.textContent = 'รอสัญญาณไฟกระพริบ แล้วรายงานให้ผู้เชี่ยวชาญทราบ!';
-        
+
         const gridContainer = document.createElement('div');
         gridContainer.className = 'logic-grid-container';
         const buttons = {};
@@ -669,10 +668,9 @@ function renderStage4(roomData) {
             gridContainer.appendChild(btn);
             buttons[color] = btn;
         });
-        
+
         gameArea.append(info, gridContainer);
-        
-        // Start flashing sequence
+
         setTimeout(() => {
             let i = 0;
             const interval = setInterval(() => {
@@ -695,13 +693,12 @@ async function handleLogicGridPress(pressedColor) {
     const roomRef = doc(db, 'rooms', currentRoomId);
     const snap = await getDoc(roomRef);
     if (!snap.exists() || snap.data().status !== 'playing') return;
-    
+
     const state = snap.data().state;
     const puzzle = state.puzzle.stage4;
     const playerPresses = state.logicGrid_playerPresses || [];
     const newPresses = [...playerPresses, pressedColor];
-    
-    // Calculate the correct solution sequence based on the modifier
+
     let solutionSequence = puzzle.flashSequence.map(color => puzzle.colorMap[color]);
     const modifierId = puzzle.modifier.id;
     if (modifierId === 'S4_M1') { solutionSequence.reverse(); }
@@ -709,13 +706,11 @@ async function handleLogicGridPress(pressedColor) {
     if (modifierId === 'S4_M3') { solutionSequence.push(solutionSequence[solutionSequence.length - 1]); }
     if (modifierId === 'S4_M4' && solutionSequence.length >= 3) { solutionSequence.splice(2, 1); }
 
-    // Check if the latest press is correct
     if (newPresses[newPresses.length - 1] !== solutionSequence[newPresses.length - 1]) {
         await handleLogicGridMistake();
         return;
     }
-    
-    // Check for win condition
+
     if (newPresses.length === solutionSequence.length) {
         await updateDoc(roomRef, { status: 'finished', 'state.defused': true });
     } else {
@@ -727,17 +722,17 @@ async function handleLogicGridMistake() {
     const roomRef = doc(db, 'rooms', currentRoomId);
     const snap = await getDoc(roomRef);
     if (!snap.exists() || snap.data().status !== 'playing') return;
-    
+
     const state = snap.data().state;
     const newTime = Math.max(0, state.timeLeft - 45);
     const newFlashSequence = Array(5).fill(0).map(() => ['red', 'blue', 'green', 'yellow'][Math.floor(Math.random() * 4)]);
-    
+
     await updateDoc(roomRef, {
         'state.timeLeft': newTime,
         'state.logicGrid_playerPresses': [],
         'state.puzzle.stage4.flashSequence': newFlashSequence
     });
-    renderedStage = 0; // Force re-render
+    renderedStage = 0;
 }
 
 // --- Main Game Flow Control ---
@@ -753,7 +748,7 @@ async function enterRoom(roomId){
     }
     const data = snap.data();
     renderRoomInfo(roomId, data);
-    
+
     const myPlayerIndex = data.players.findIndex(p => p.uid === me.uid);
     localRole = (myPlayerIndex === 0) ? 'Tech Expert' : 'Field Agent';
     ownerUid = data.owner;
@@ -857,7 +852,6 @@ function showGame(roomData) {
     renderGameFinished(roomData);
     return;
   }
-  // Force re-render if stage changes OR if it's a mistake reset in stage 4
   if (renderedStage !== roomData.state.currentStage) {
     renderedStage = roomData.state.currentStage;
     renderCurrentStage(roomData);
