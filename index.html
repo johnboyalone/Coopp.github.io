@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
   <title>Defuse Duo — คู่หูกู้ระเบิด</title>
   <link rel="stylesheet" href="style.css">
-  <script type="module" src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
 </head>
 <body>
   <div id="app">
@@ -27,7 +26,7 @@
 
           <div id="joinArea" class="hidden">
             <label>รหัสภารกิจ</label>
-            <input id="roomIdInput" placeholder="เช่น: ABC123">
+            <input id="roomIdInput" placeholder="เช่น: ABC123" type="text">
             <button id="joinConfirmBtn">ยืนยันเข้าร่วม</button>
           </div>
 
@@ -48,12 +47,11 @@
       <section id="game" class="hidden">
         <div class="card">
           <h2 id="roleTitle">บทบาท</h2>
+          <div id="timerText">เวลา:<div class="digits">--:--</div></div>
           <div id="gameArea">
             <!-- UI ของเกมจะแสดงที่นี่ -->
           </div>
           <div id="gameFooter">
-            <p id="timerText" class="timer-critical">เวลา: --:--</p>
-            <p id="hintText" class="hint"></p>
             <button id="backToLobbyBtn">กลับศูนย์บัญชาการ</button>
           </div>
         </div>

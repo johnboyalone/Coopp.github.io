@@ -1,16 +1,12 @@
 // =================================================================
-// Defuse Duo - script.js (Updated with New Stage 3)
-// PART 1 OF 3
-// =================================================================
-
-// -----------------------------------------------------------------
+// Defuse Duo - script.js (Part 1 of 3) - GRAND OVERHAUL
 // SECTION 1: MAIN CONTROL, LOBBY, AND FIREBASE SETUP
-// -----------------------------------------------------------------
+// =================================================================
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
 import {
-  getFirestore, doc, setDoc, getDoc, onSnapshot, updateDoc, arrayUnion, arrayRemove, serverTimestamp
+  getFirestore, doc, setDoc, getDoc, onSnapshot, updateDoc, arrayUnion, arrayRemove, serverTimestamp, deleteDoc
 } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -45,7 +41,6 @@ const sectionGame = document.getElementById('game');
 const roleTitle = document.getElementById('roleTitle');
 const gameArea = document.getElementById('gameArea');
 const timerText = document.getElementById('timerText');
-const hintText = document.getElementById('hintText');
 const backToLobbyBtn = document.getElementById('backToLobbyBtn');
 
 // --- Game State ---
@@ -57,6 +52,7 @@ let ownerUid = null;
 let countdownInterval = null;
 let isGameUIShown = false;
 let renderedStage = 0;
+let localStrikes = 0;
 
 // --- Helper ---
 function makeRoomId(len = 6){
@@ -108,10 +104,10 @@ createRoomBtn.addEventListener('click', async ()=>{
       state: {
         puzzle: puzzle,
         currentStage: 1,
+        strikes: 0,
         logicGrid_playerPresses: [],
         defused: false,
-        timeLeft: 300, // 5 minutes
-        strikes: 0
+        timeLeft: 300 // 5 minutes
       }
     };
     await setDoc(roomRef, initial);
@@ -145,8 +141,7 @@ leaveRoomBtn.addEventListener('click', async ()=>{
   if (!currentRoomId) return;
   const ref = doc(db, 'rooms', currentRoomId);
   await updateDoc(ref, { players: arrayRemove({ uid: me.uid, name: me.name }) }).catch(()=>{});
-  cleanupRoom();
-  showLobby();
+  cleanupAndShowLobby();
 });
 
 startGameBtn.addEventListener('click', async ()=>{
@@ -156,12 +151,19 @@ startGameBtn.addEventListener('click', async ()=>{
 });
 
 backToLobbyBtn.addEventListener('click', ()=>{
-  if (currentRoomId) {
-    leaveRoomBtn.click();
-  } else {
-    showLobby();
-  }
+    if (currentRoomId) {
+        const roomRef = doc(db, 'rooms', currentRoomId);
+        getDoc(roomRef).then(snap => {
+            if (snap.exists() && snap.data().owner === me.uid) {
+                deleteDoc(roomRef); // Owner deletes the room
+            } else {
+                leaveRoomBtn.click(); // Non-owner just leaves
+            }
+        });
+    }
+    cleanupAndShowLobby();
 });
+
 
 // --- Room & Game State Management ---
 async function enterRoom(roomId){
@@ -170,9 +172,8 @@ async function enterRoom(roomId){
 
   roomUnsubscribe = onSnapshot(ref, (snap)=>{
     if (!snap.exists()){
-      alert('ภารกิจถูกยกเลิก');
-      cleanupRoom();
-      showLobby();
+      alert('ภารกิจถูกยกเลิกโดยผู้สร้าง');
+      cleanupAndShowLobby();
       return;
     }
     const data = snap.data();
@@ -186,11 +187,14 @@ async function enterRoom(roomId){
       }
       showGame(data);
     } else if (data.status === 'finished') {
-      if (isGameUIShown) {
         showFinishedScreen(data);
-      }
     } else if (data.status === 'waiting') {
         showLobbyRoomView();
+    }
+    
+    // Universal strike check
+    if (data.state && data.state.strikes >= 3 && data.status === 'playing') {
+        updateDoc(ref, { status: 'finished', 'state.defused': false });
     }
   });
 
@@ -199,13 +203,7 @@ async function enterRoom(roomId){
 
 function renderRoomInfo(roomId, data){
   roomIdLabel.textContent = roomId;
-  
-  let statusText = data.status || 'รอเจ้าหน้าที่';
-  if (data.state && data.state.strikes > 0 && data.status === 'playing') {
-      statusText += ` (ความผิดพลาด: ${data.state.strikes})`;
-  }
-  roomStatus.textContent = statusText;
-
+  roomStatus.textContent = data.status || 'รอเจ้าหน้าที่';
   playersList.innerHTML = '';
   (data.players || []).forEach(p => {
     const role = (p.uid === data.owner) ? '(ผู้เชี่ยวชาญ)' : '(เจ้าหน้าที่ภาคสนาม)';
@@ -218,11 +216,12 @@ function renderRoomInfo(roomId, data){
     ownerHint.textContent = 'คุณคือผู้เชี่ยวชาญ — กด "เริ่มภารกิจ" เมื่อพร้อม';
   } else {
     startGameBtn.classList.add('hidden');
-    ownerHint.textContent = '';
+    ownerHint.textContent = (data.players.length < 2) ? 'รอเจ้าหน้าที่อีก 1 คน...' : 'รอผู้เชี่ยวชาญเริ่มภารกิจ...';
   }
 }
 
 function showLobbyRoomView(){
+  document.body.classList.remove('game-active');
   isGameUIShown = false;
   renderedStage = 0;
   clearInterval(countdownInterval);
@@ -233,22 +232,7 @@ function showLobbyRoomView(){
   joinArea.classList.add('hidden');
 }
 
-function showLobby(){
-  if (roomUnsubscribe) { roomUnsubscribe(); roomUnsubscribe = null; }
-  currentRoomId = null;
-  roomInfo.classList.add('hidden');
-  startGameBtn.classList.add('hidden');
-  showLobbyRoomView();
-}
-
-async function cleanupRoom(){
-  if (!currentRoomId) return;
-  const ref = doc(db, 'rooms', currentRoomId);
-  try {
-    if (me && me.name) {
-      await updateDoc(ref, { players: arrayRemove({ uid: me.uid, name: me.name }) });
-    }
-  } catch (e) {}
+function cleanupAndShowLobby(){
   if (roomUnsubscribe) { roomUnsubscribe(); roomUnsubscribe = null; }
   currentRoomId = null;
   localRole = null;
@@ -257,12 +241,20 @@ async function cleanupRoom(){
   countdownInterval = null;
   isGameUIShown = false;
   renderedStage = 0;
+  localStrikes = 0;
+  
+  document.body.classList.remove('game-active');
+  mainLobby.classList.remove('hidden');
+  sectionGame.classList.add('hidden');
+  roomInfo.classList.add('hidden');
+  startGameBtn.classList.add('hidden');
 }
 
 // --- Timer and Finish Screen Logic ---
 function startTimer(roomData) {
   if (me.uid === roomData.owner && !countdownInterval) {
     countdownInterval = setInterval(async ()=>{
+      if (!currentRoomId) { clearInterval(countdownInterval); return; }
       const roomRef = doc(db, 'rooms', currentRoomId);
       const snap = await getDoc(roomRef);
       if (!snap.exists()) { clearInterval(countdownInterval); return; }
@@ -285,7 +277,9 @@ function startTimer(roomData) {
 }
 
 function updateTimer(timeLeft) {
-  timerText.textContent = 'เวลา: ' + formatTime(timeLeft);
+  const m = Math.floor(timeLeft/60).toString().padStart(2,'0');
+  const s = (timeLeft%60).toString().padStart(2,'0');
+  timerText.innerHTML = `เวลา:<div class="digits">${m}:${s}</div>`;
   if (timeLeft < 60 && timeLeft > 0) {
       timerText.classList.add('timer-critical');
   } else {
@@ -302,11 +296,11 @@ function showFinishedScreen(roomData) {
     const state = roomData.state;
 
     const summary = document.createElement('div');
-    summary.style.textAlign = 'center';
+    summary.className = 'finish-screen';
 
     const title = document.createElement('h3');
     if (state.defused) {
-        title.textContent = '✅ ภารกิจสำเร็จ! ระเบิดถูกกู้แล้ว! ✅';
+        title.textContent = '✅ ภารกิจสำเร็จ! ✅';
         title.style.color = 'var(--accent)';
     } else {
         title.textContent = '💥 ภารกิจล้มเหลว! 💥';
@@ -314,15 +308,9 @@ function showFinishedScreen(roomData) {
     }
     summary.appendChild(title);
 
-    const timeReport = document.createElement('p');
-    timeReport.innerHTML = `เวลาที่เหลือ: ${formatTime(state.timeLeft)}`;
-    summary.appendChild(timeReport);
-
-    if (state.strikes > 0) {
-        const strikeReport = document.createElement('p');
-        strikeReport.textContent = `จำนวนความผิดพลาด: ${state.strikes}`;
-        summary.appendChild(strikeReport);
-    }
+    const report = document.createElement('p');
+    report.innerHTML = `เวลาที่เหลือ: ${formatTime(state.timeLeft)}<br>Strikes: ${state.strikes}/3`;
+    summary.appendChild(report);
 
     gameArea.appendChild(summary);
     document.querySelectorAll('#game button').forEach(b => b.disabled = true);
@@ -338,49 +326,50 @@ function formatTime(sec){
 }
 
 window.addEventListener('beforeunload', async ()=>{
-  if (currentRoomId && me) {
-    cleanupRoom();
+  if (currentRoomId && me && me.name) {
+    const roomRef = doc(db, 'rooms', currentRoomId);
+    await updateDoc(roomRef, { players: arrayRemove({ uid: me.uid, name: me.name }) }).catch(()=>{});
   }
 });
 // =================================================================
-// Defuse Duo - script.js (Updated with New Stage 3)
-// PART 2 OF 3
+// Defuse Duo - script.js (Part 2 of 3) - GRAND OVERHAUL
+// SECTION 2: PUZZLE GENERATION LOGIC
 // =================================================================
 
-// -----------------------------------------------------------------
-// SECTION 2: PUZZLE GENERATION LOGIC
-// -----------------------------------------------------------------
+const ALL_COLORS = ['red', 'blue', 'yellow', 'green', 'orange', 'purple', 'white', 'pink'];
+const SYMBOL_POOL = ['⍰','↟','⍼','⟐','⨳','⩻','⪢','⟁'];
 
-// --- Helper for puzzle generation ---
-function shuffleArray(array) {
-  for (let i = array.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [array[i], array[j]] = [array[j], array[i]];
-  }
-  return array;
-}
-
-function getRandomInt(min, max) {
-    return Math.floor(Math.random() * (max - min + 1)) + min;
-}
-
-// --- Rule Library for Stage 1 (Client-side logic) ---
 const stage1RuleLibrary = {
-    'MORE_THAN_ONE_RED': {
-        condition: (wires) => wires.filter(w => w.color === 'red').length > 1,
-        action: (wires) => wires.filter(w => w.color === 'red').pop(),
+    'MORE_THAN_X_OF_COLOR': {
+        condition: (wires, color, count) => wires.filter(w => w.color === color).length > count,
+        action: (wires, color) => wires.filter(w => w.color === color).pop(),
     },
-    'NO_BLUE': {
-        condition: (wires) => !wires.some(w => w.color === 'blue'),
-        action: (wires) => wires[1],
+    'EXACTLY_X_OF_COLOR': {
+        condition: (wires, color, count) => wires.filter(w => w.color === color).length === count,
+        action: (wires, color) => wires.find(w => w.color === color),
     },
-    'HAS_DIAMOND': {
-        condition: (wires) => wires.some(w => w.symbol === '⟐'),
-        action: (wires) => wires.find(w => w.symbol === '↟'),
+    'NO_COLOR': {
+        condition: (wires, color) => !wires.some(w => w.color === color),
+        action: (wires, wireIndex) => wires[wireIndex],
     },
-    'ONLY_ONE_YELLOW': {
-        condition: (wires) => wires.filter(w => w.color === 'yellow').length === 1,
-        action: (wires) => wires.find(w => w.color === 'yellow'),
+    'HAS_SYMBOL': {
+        condition: (wires, symbol) => wires.some(w => w.symbol === symbol),
+        action: (wires, targetSymbol) => wires.find(w => w.symbol === targetSymbol),
+    },
+    'ALL_DIFFERENT_COLORS': {
+        condition: (wires) => new Set(wires.map(w => w.color)).size === wires.length,
+        action: (wires) => wires[wires.length - 1],
+    },
+    'TWO_PAIRS_OF_COLORS': {
+        condition: (wires) => {
+            const counts = wires.reduce((acc, wire) => { acc[wire.color] = (acc[wire.color] || 0) + 1; return acc; }, {});
+            return Object.values(counts).filter(count => count === 2).length === 2;
+        },
+        action: (wires) => wires[2],
+    },
+    'ROOM_ID_HAS_NUMBER': {
+        condition: (wires, roomId) => /\d/.test(roomId),
+        action: (wires, wireIndex) => wires[wireIndex],
     },
     'DEFAULT': {
         condition: () => true,
@@ -388,134 +377,141 @@ const stage1RuleLibrary = {
     }
 };
 
-// --- STAGE 3: New Puzzle Generation ---
-function generateStage3Puzzle(roomId, stage1Data) {
-    // --- Part 1: Switch Configuration ---
-    const ledColors = ['red', 'green', 'blue', 'off'];
-    const switchLabels = shuffleArray(['α', 'β', 'γ', 'δ']);
-    const ledColorOnBomb = ledColors[getRandomInt(0, 3)];
-    
-    const switchRules = [
-        { color: 'red', rule: `ถ้าหลอดไฟเป็น <b>สีแดง</b>: เปิดเฉพาะ <b>${switchLabels[0]}</b> และ <b>${switchLabels[2]}</b>`, correct: [true, false, true, false] },
-        { color: 'green', rule: `ถ้าหลอดไฟเป็น <b>สีเขียว</b>: เปิดเฉพาะ <b>${switchLabels[1]}</b> และ <b>${switchLabels[3]}</b>`, correct: [false, true, false, true] },
-        { color: 'blue', rule: `ถ้าหลอดไฟเป็น <b>สีน้ำเงิน</b>: เปิดสวิตช์ <b>ทั้งหมด</b>`, correct: [true, true, true, true] },
-        { color: 'off', rule: `ถ้าหลอดไฟ <b>ไม่ติด</b>: ปิดสวิตช์ <b>ทั้งหมด</b>`, correct: [false, false, false, false] }
-    ];
-    const correctSwitchSetting = switchRules.find(r => r.color === ledColorOnBomb).correct;
-
-    // --- Part 2: Pressure Levers ---
-    const leverLabels = shuffleArray(['Fe', 'Cu', 'Au']);
-    const numYellowWires = stage1Data.wiresOnBomb.filter(w => w.color === 'yellow').length;
-    const hasNumberInRoomId = /\d/.test(roomId);
-
-    const correctLeverValues = [
-        2 + 1, // Fe: Players in team (2) + 1
-        hasNumberInRoomId ? 5 : 2, // Cu: Depends on room ID
-        numYellowWires + 1 // Au: Depends on stage 1
-    ];
-
-    const pressureFormulas = [
-        `ระดับของ <b>${leverLabels[0]}</b> = จำนวนผู้เล่นในทีม + 1`,
-        `ระดับของ <b>${leverLabels[1]}</b> = ถ้าในรหัสภารกิจมีตัวเลข ให้ตั้งเป็น 5, มิเช่นนั้นตั้งเป็น 2`,
-        `ระดับของ <b>${leverLabels[2]}</b> = จำนวนสายไฟสีเหลืองในด่านที่ 1 + 1`
-    ];
-
-    // --- Part 3: Confirmation Code ---
-    const sumOfLevers = correctLeverValues.reduce((a, b) => a + b, 0);
-    const diffOfLevers = Math.max(...correctLeverValues) - Math.min(...correctLeverValues);
-    const correctCode = hasNumberInRoomId ? sumOfLevers : diffOfLevers;
-
-    const codeRules = [
-        "<b>ถ้ารหัสภารกิจมีตัวเลข:</b> รหัสยืนยันคือ <b>ผลรวม</b> ของระดับคันโยกทั้งสาม",
-        "<b>ถ้ารหัสภารกิจไม่มีตัวเลข:</b> รหัสยืนยันคือ <b>ผลต่าง</b> ระหว่างระดับคันโยกที่สูงที่สุดและต่ำที่สุด"
-    ];
-
-    return {
-        // Data for Field Agent
-        ledColor: ledColorOnBomb,
-        switchLabels: switchLabels,
-        leverLabels: leverLabels,
-        // Data for Tech Expert
-        manual: {
-            switchRules: shuffleArray(switchRules.map(r => r.rule)),
-            pressureFormulas: shuffleArray(pressureFormulas),
-            codeRules: shuffleArray(codeRules)
-        },
-        // Correct answers for validation
-        solution: {
-            switches: correctSwitchSetting,
-            levers: correctLeverValues,
-            code: correctCode
-        }
-    };
+function shuffleArray(array) {
+  const newArr = [...array];
+  for (let i = newArr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [newArr[i], newArr[j]] = [newArr[j], newArr[i]];
+  }
+  return newArr;
 }
 
-
-// --- Master Puzzle Generation Function ---
 function generateFullPuzzle(roomId) {
-  // --- STAGE 1: CONDITIONAL WIRING ---
-  const symbolPool = ['⍰','↟','⍼','⟐','⨳','⩻','⪢','⟁'];
-  const colorPool = ['red', 'blue', 'yellow'];
+  // --- STAGE 1: CONDITIONAL WIRING (8-COLOR SYSTEM) ---
   const wiresOnBomb = [];
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 6; i++) {
     wiresOnBomb.push({
       id: i,
-      symbol: symbolPool[Math.floor(Math.random() * symbolPool.length)],
-      color: colorPool[Math.floor(Math.random() * colorPool.length)]
+      symbol: SYMBOL_POOL[Math.floor(Math.random() * SYMBOL_POOL.length)],
+      color: ALL_COLORS[Math.floor(Math.random() * ALL_COLORS.length)]
     });
   }
   const ruleSet = [
-    { id: 'MORE_THAN_ONE_RED', description: "ถ้ามีสายไฟสี <b>แดง</b> มากกว่า 1 เส้น", subDescription: "→ ให้ตัดสายไฟสี <b>แดง</b> เส้นสุดท้าย" },
-    { id: 'NO_BLUE', description: "ถ้า <b>ไม่มี</b> สายไฟสี <b>น้ำเงิน</b> เลย", subDescription: "→ ให้ตัดสายไฟเส้นที่ <b>สอง</b>" },
-    { id: 'HAS_DIAMOND', description: "ถ้ามีสายไฟสัญลักษณ์ <b>⟐</b>", subDescription: "→ ให้ตัดสายไฟสัญลักษณ์ <b>↟</b> (ถ้ามี)" },
-    { id: 'ONLY_ONE_YELLOW', description: "ถ้ามีสายไฟสี <b>เหลือง</b> เพียงเส้นเดียว", subDescription: "→ ให้ตัดสายไฟสี <b>เหลือง</b> เส้นนั้น" }
+    { id: 'MORE_THAN_X_OF_COLOR', params: ['red', 2], description: "ถ้ามีสายไฟสี <b>แดง</b> มากกว่า 2 เส้น", subDescription: "→ ให้ตัดสายไฟสี <b>แดง</b> เส้นสุดท้าย" },
+    { id: 'EXACTLY_X_OF_COLOR', params: ['yellow', 1], description: "ถ้ามีสายไฟสี <b>เหลือง</b> เพียงเส้นเดียว", subDescription: "→ ให้ตัดสายไฟสี <b>เหลือง</b> เส้นนั้น" },
+    { id: 'NO_COLOR', params: ['blue', 1], description: "ถ้า <b>ไม่มี</b> สายไฟสี <b>น้ำเงิน</b> เลย", subDescription: "→ ให้ตัดสายไฟเส้นที่ <b>สอง</b>" },
+    { id: 'HAS_SYMBOL', params: ['⟐', '↟'], description: "ถ้ามีสายไฟสัญลักษณ์ <b>⟐</b>", subDescription: "→ ให้ตัดสายไฟสัญลักษณ์ <b>↟</b> (ถ้ามี)" },
+    { id: 'ALL_DIFFERENT_COLORS', params: [], description: "ถ้าสายไฟทุกเส้น <b>มีสีไม่ซ้ำกันเลย</b>", subDescription: "→ ให้ตัดสายไฟเส้น <b>สุดท้าย</b>" },
+    { id: 'TWO_PAIRS_OF_COLORS', params: [], description: "ถ้ามีสายไฟ <b>สีซ้ำกัน 2 คู่</b> พอดี", subDescription: "→ ให้ตัดสายไฟเส้นที่ <b>สาม</b>" },
+    { id: 'ROOM_ID_HAS_NUMBER', params: [roomId, 3], description: "<b>ถ้ารหัสภารกิจมีตัวเลข:</b>", subDescription: "→ ให้ตัดสายไฟเส้นที่ <b>สี่</b>" },
+    { id: 'NO_COLOR', params: ['white', 0], description: "ถ้า <b>ไม่มี</b> สายไฟสี <b>ขาว</b> เลย", subDescription: "→ ให้ตัดสายไฟเส้นที่ <b>หนึ่ง</b>" },
+    { id: 'MORE_THAN_X_OF_COLOR', params: ['green', 1], description: "ถ้ามีสายไฟสี <b>เขียว</b> มากกว่า 1 เส้น", subDescription: "→ ให้ตัดสายไฟสี <b>เขียว</b> เส้นแรก" },
+    { id: 'EXACTLY_X_OF_COLOR', params: ['purple', 2], description: "ถ้ามีสายไฟสี <b>ม่วง</b> 2 เส้นพอดี", subDescription: "→ ให้ตัดสายไฟสี <b>ม่วง</b> เส้นที่สอง" },
+    { id: 'HAS_SYMBOL', params: ['⍰', '⍼'], description: "ถ้ามีสายไฟสัญลักษณ์ <b>⍰</b>", subDescription: "→ ให้ตัดสายไฟสัญลักษณ์ <b>⍼</b> (ถ้ามี)" },
   ];
-  const stage1Rules = shuffleArray(ruleSet).slice(0, 3);
-  stage1Rules.push({ id: 'DEFAULT', description: "มิเช่นนั้น (ถ้าไม่มีกฎข้อไหนตรงเลย)", subDescription: "→ ให้ตัดสายไฟเส้น <b>แรก</b>" });
+  const stage1Rules = shuffleArray(ruleSet).slice(0, 5);
+  stage1Rules.push({ id: 'DEFAULT', params: [], description: "มิเช่นนั้น (ถ้าไม่มีกฎข้อไหนตรงเลย)", subDescription: "→ ให้ตัดสายไฟเส้น <b>แรก</b>" });
   const stage1Data = { wiresOnBomb, rules: stage1Rules };
 
-  // --- STAGE 2: POWER CALIBRATION ---
-  const initialA = (Math.floor(Math.random() * 5) + 3) * 10;
-  const initialB = (Math.floor(Math.random() * 5) + 3) * 10;
-  const initialC = (Math.floor(Math.random() * 5) + 3) * 10;
-  let targetA = initialA, targetB = initialB, targetC = initialC;
-  for (let i = 0; i < 5; i++) {
-      const pressType = Math.floor(Math.random() * 3);
-      if (pressType === 0) { targetA += 10; targetB += 10; }
-      else if (pressType === 1) { targetA -= 10; targetC -= 10; }
-      else { targetB += 10; targetC -= 10; }
+  // --- STAGE 2: POWER CALIBRATION (CORRECTED LOGIC) ---
+  let initialA, initialB, initialC, targetSum;
+  let isSolvable = false;
+  while (!isSolvable) {
+    initialA = (Math.floor(Math.random() * 5) + 3) * 10;
+    initialB = (Math.floor(Math.random() * 5) + 3) * 10;
+    initialC = (Math.floor(Math.random() * 5) + 3) * 10;
+    let targetA = initialA, targetB = initialB, targetC = initialC;
+    const pressCount = Math.floor(Math.random() * 6) + 5; 
+    for (let i = 0; i < pressCount; i++) {
+        const pressType = Math.floor(Math.random() * 3);
+        if (pressType === 0) { targetA += 10; targetB += 10; }
+        else if (pressType === 1) { targetA -= 10; targetC -= 10; }
+        else { targetB += 10; targetC -= 10; }
+    }
+    if (targetA <= targetC) targetA += 20;
+    if (targetB % 20 !== 0) targetB += 10;
+    if (targetA < 0 || targetB < 0 || targetC < 0) continue;
+    targetSum = targetA + targetB + targetC;
+    const sumDifference = Math.abs(targetSum - (initialA + initialB + initialC));
+    if (sumDifference % 20 === 0) {
+        isSolvable = true;
+    }
   }
-  if (targetA <= targetC) targetA += 20;
-  if (targetB % 20 !== 0) targetB += 10;
-  if (targetA < 0 || targetB < 0 || targetC < 0) { return generateFullPuzzle(roomId); }
-  const targetSum = targetA + targetB + targetC;
   const stage2Data = { initialA, initialB, initialC, targetSum };
 
-  // --- STAGE 3: MANUAL DETONATOR OVERRIDE (NEW) ---
-  const stage3Data = generateStage3Puzzle(roomId, stage1Data);
+  // --- STAGE 3: MANUAL OVERRIDE (RANDOMIZED RULES) ---
+  const switchLabels = shuffleArray(['α', 'β', 'γ', 'δ']);
+  const leverLabels = shuffleArray(['Fe', 'Cu', 'Au']);
+  const ledColor = ['red', 'green', 'blue', 'off'][Math.floor(Math.random() * 4)];
+  
+  // Rule variables
+  const hasNumberInRoomId = /\d/.test(roomId);
+  const strikesAtStart = 0; // This would be dynamic if we allowed carrying strikes over
+  const wireCounts = wiresOnBomb.reduce((acc, wire) => { acc[wire.color] = (acc[wire.color] || 0) + 1; return acc; }, {});
+  
+  // Randomize which rule is used for each component
+  const switchRuleType = ['ledColor', 'wireCount', 'roomId'][Math.floor(Math.random() * 3)];
+  const leverRuleFeType = ['constant', 'wireColor'][Math.floor(Math.random() * 2)];
+  const leverRuleCuType = ['roomId', 'symbolCount'][Math.floor(Math.random() * 2)];
+  const leverRuleAuType = ['wireColor', 'lastWireColor'][Math.floor(Math.random() * 2)];
+  const confirmCodeRuleType = ['sum', 'difference', 'product', 'concat'][Math.floor(Math.random() * 4)];
 
-  // --- STAGE 4: LOGIC GRID ---
-  const colors = ['red', 'blue', 'green', 'yellow'];
-  const flashSequence = Array(5).fill(0).map(() => colors[Math.floor(Math.random() * 4)]);
+  // Calculate the solution based on the chosen rules
+  let correctSwitches;
+  if (switchRuleType === 'ledColor') {
+    correctSwitches = ledColor === 'off' ? ['β', 'δ'] : ['α', 'γ'];
+  } else if (switchRuleType === 'wireCount') {
+    correctSwitches = (wireCounts['red'] || 0) > 1 ? ['α', 'β'] : ['γ', 'δ'];
+  } else { // roomId
+    correctSwitches = hasNumberInRoomId ? ['α', 'δ'] : ['β', 'γ'];
+  }
+
+  const levelFe = leverRuleFeType === 'constant' ? 3 : (wireCounts['blue'] || 0) + 1;
+  const levelCu = leverRuleCuType === 'roomId' ? (hasNumberInRoomId ? 5 : 2) : new Set(wiresOnBomb.map(w => w.symbol)).size;
+  const levelAu = leverRuleAuType === 'wireColor' ? (wireCounts['yellow'] || 0) + 1 : ALL_COLORS.indexOf(wiresOnBomb[5].color) + 1;
+  
+  let confirmCode;
+  const leverValues = [levelFe, levelCu, levelAu];
+  if (confirmCodeRuleType === 'sum') {
+    confirmCode = leverValues.reduce((a, b) => a + b, 0);
+  } else if (confirmCodeRuleType === 'difference') {
+    confirmCode = Math.max(...leverValues) - Math.min(...leverValues);
+  } else if (confirmCodeRuleType === 'product') {
+    confirmCode = levelFe * levelAu;
+  } else { // concat
+    confirmCode = parseInt(`${levelFe}${levelCu}${levelAu}`.slice(-2));
+  }
+  confirmCode = confirmCode % 100; // Ensure it's 2 digits
+
+  const stage3Solution = {
+      correctSwitches,
+      correctLeverValues: { Fe: levelFe, Cu: levelCu, Au: levelAu },
+      confirmCode
+  };
+
+  const stage3Data = {
+    display: { switchLabels, leverLabels, ledColor },
+    rules: { switchRuleType, leverRuleFeType, leverRuleCuType, leverRuleAuType, confirmCodeRuleType },
+    solution: stage3Solution
+  };
+
+  // --- STAGE 4: LOGIC GRID (8-COLOR SYSTEM) ---
+  const flashSequence = Array(5).fill(0).map(() => ALL_COLORS[Math.floor(Math.random() * ALL_COLORS.length)]);
   const colorMap = {};
-  const shuffledColors = shuffleArray([...colors]);
-  colors.forEach((color, i) => { colorMap[color] = shuffledColors[i]; });
+  const shuffledColors = shuffleArray(ALL_COLORS);
+  ALL_COLORS.forEach((color, i) => { colorMap[color] = shuffledColors[i]; });
   const hasNumberInRoomIdStage4 = /\d/.test(roomId);
   const stage4Data = { flashSequence, colorMap, hasNumberInRoomId: hasNumberInRoomIdStage4 };
 
   return { stage1: stage1Data, stage2: stage2Data, stage3: stage3Data, stage4: stage4Data };
 }
 // =================================================================
-// Defuse Duo - script.js (Updated with New Stage 3)
-// PART 3 OF 3 - CORRECTED AND COMPLETE
+// Defuse Duo - script.js (Part 3 of 3) - GRAND OVERHAUL
+// SECTION 3: PUZZLE RENDERING AND HANDLING
 // =================================================================
 
-// -----------------------------------------------------------------
-// SECTION 3: PUZZLE RENDERING AND HANDLING
-// -----------------------------------------------------------------
-
-// --- Main Game Rendering Logic ---
 function showGame(roomData){
+  document.body.classList.add('game-active');
   mainLobby.classList.add('hidden');
   sectionGame.classList.remove('hidden');
   roleTitle.textContent = `บทบาท: ${localRole}`;
@@ -524,8 +520,8 @@ function showGame(roomData){
   startTimer(roomData);
 
   if (roomData.state && roomData.state.puzzle) {
-    // Force re-render if the stage number is the same but a puzzle reset happened (e.g. on failure)
-    if (renderedStage !== roomData.state.currentStage || gameArea.innerHTML === '') {
+    if (renderedStage !== roomData.state.currentStage || localStrikes !== roomData.state.strikes) {
+      localStrikes = roomData.state.strikes;
       renderCurrentStage(roomData);
       renderedStage = roomData.state.currentStage;
     }
@@ -535,8 +531,11 @@ function showGame(roomData){
 }
 
 function renderCurrentStage(roomData) {
-  gameArea.innerHTML = ''; // Clear previous stage
+  gameArea.innerHTML = '';
   const state = roomData.state;
+  
+  const topBar = document.createElement('div');
+  topBar.className = 'game-top-bar';
   
   const stageIndicator = document.createElement('div');
   stageIndicator.className = 'stage-indicator';
@@ -547,12 +546,35 @@ function renderCurrentStage(roomData) {
     if (i === state.currentStage) dot.classList.add('active');
     stageIndicator.appendChild(dot);
   }
-  gameArea.appendChild(stageIndicator);
+  
+  const strikeIndicator = document.createElement('div');
+  strikeIndicator.className = 'strike-indicator';
+  strikeIndicator.textContent = `Strikes: ${state.strikes}/3`;
+
+  topBar.append(stageIndicator, strikeIndicator);
+  gameArea.appendChild(topBar);
 
   if (state.currentStage === 1) renderStage1(roomData);
   else if (state.currentStage === 2) renderStage2(roomData);
   else if (state.currentStage === 3) renderStage3(roomData);
   else if (state.currentStage === 4) renderStage4(roomData);
+}
+
+async function applyStrike(penalty = 0) {
+    if (!currentRoomId) return;
+    const roomRef = doc(db, 'rooms', currentRoomId);
+    const snap = await getDoc(roomRef);
+    if (!snap.exists() || snap.data().status !== 'playing') return;
+
+    const state = snap.data().state;
+    const newStrikes = (state.strikes || 0) + 1;
+    const newTime = Math.max(0, state.timeLeft - penalty);
+
+    if (newStrikes >= 3) {
+        await updateDoc(roomRef, { 'state.strikes': newStrikes, 'state.timeLeft': newTime, status: 'finished', 'state.defused': false });
+    } else {
+        await updateDoc(roomRef, { 'state.strikes': newStrikes, 'state.timeLeft': newTime });
+    }
 }
 
 // --- STAGE 1: CONDITIONAL WIRING ---
@@ -597,30 +619,42 @@ async function handleWireCut(cutWireId) {
     const snap = await getDoc(roomRef);
     const data = snap.data();
     if (data.status !== 'playing' || !data.state.puzzle) return; 
+
+    document.querySelectorAll('.wire').forEach(el => {
+        el.style.pointerEvents = 'none';
+        el.style.cursor = 'default';
+    });
+    
+    const clickedWireElement = document.querySelector(`.wire[data-wire-id="${cutWireId}"]`);
+    if (clickedWireElement) {
+        clickedWireElement.classList.add('cut');
+    }
+
     const wires = data.state.puzzle.stage1.wiresOnBomb;
     const rulesFromDB = data.state.puzzle.stage1.rules;
-    if (!Array.isArray(rulesFromDB)) return; 
+    
     let correctWireToCut = null;
+
     for (const ruleData of rulesFromDB) {
         const ruleLogic = stage1RuleLibrary[ruleData.id];
-        if (ruleLogic && ruleLogic.condition(wires)) {
-            correctWireToCut = ruleLogic.action(wires);
-            break;
+        if (ruleLogic && ruleLogic.condition(wires, ...ruleData.params)) {
+            const resultWire = ruleLogic.action(wires, ...ruleData.params);
+            if (resultWire) {
+                correctWireToCut = resultWire;
+                break;
+            }
         }
     }
-    if (!correctWireToCut || cutWireId !== correctWireToCut.id) {
-        const newTime = Math.max(0, data.state.timeLeft - 30);
-        const newStrikes = (data.state.strikes || 0) + 1;
-        if (newStrikes >= 3) {
-            await updateDoc(roomRef, { status: 'finished', 'state.defused': false, 'state.strikes': newStrikes, 'state.timeLeft': newTime });
+    
+    setTimeout(async () => {
+        if (correctWireToCut && cutWireId === correctWireToCut.id) {
+            await updateDoc(roomRef, { 'state.currentStage': 2 });
         } else {
-            await updateDoc(roomRef, { 'state.strikes': newStrikes, 'state.timeLeft': newTime });
-            renderedStage = 0;
+            await applyStrike(15);
         }
-    } else {
-        await updateDoc(roomRef, { 'state.currentStage': 2 });
-    }
+    }, 1200);
 }
+
 
 // --- STAGE 2: POWER CALIBRATION ---
 function renderStage2(roomData) {
@@ -639,7 +673,7 @@ function renderStage2(roomData) {
                           <li>ค่าพลังงานของแกน <b>B</b> ต้องเป็นเลขคู่ (ลงท้ายด้วย 0)</li>
                           <li>ห้ามให้ค่าพลังงานของแกนใดแกนหนึ่งติดลบ</li>
                         </ul>
-                        <p style="color: var(--danger);"><b>คำเตือน:</b> หากเจ้าหน้าที่ภาคสนามกดปุ่มรีเซ็ตฉุกเฉิน เวลาจะลดลง 20 วินาที และค่าพลังงานจะกลับไปที่ค่าเริ่มต้น</p>`;
+                        <p style="color: var(--danger-text);"><b>คำเตือน:</b> หากเจ้าหน้าที่ภาคสนามกดปุ่มรีเซ็ตฉุกเฉิน เวลาจะลดลง 20 วินาที</p>`;
     gameArea.append(info, manual);
   } else { // Field Agent
     const info = document.createElement('p');
@@ -670,7 +704,7 @@ function renderStage2(roomData) {
     btnPlusB.title = '+10 to B, -10 to C';
     const resetBtn = document.createElement('button');
     resetBtn.id = 'resetCalibrationBtn';
-    resetBtn.style.backgroundColor = 'var(--danger)';
+    resetBtn.className = 'btn-danger';
     resetBtn.textContent = 'RESET';
     resetBtn.title = 'รีเซ็ตค่าพลังงาน (เวลา -20 วินาที!)';
     const confirmBtn = document.createElement('button');
@@ -720,132 +754,138 @@ async function handleCalibrationConfirm() {
     if (currentSnap.data().status !== 'playing') return;
     await updateDoc(roomRef, { 'state.currentStage': 3 });
 }
-
-// --- STAGE 3: MANUAL DETONATOR OVERRIDE (NEW) ---
+// --- STAGE 3: MANUAL OVERRIDE ---
 function renderStage3(roomData) {
-    const puzzleData = roomData.state.puzzle.stage3;
+    const puzzle = roomData.state.puzzle;
+    const stage3 = puzzle.stage3;
+    const wireCounts = puzzle.stage1.wiresOnBomb.reduce((acc, wire) => { acc[wire.color] = (acc[wire.color] || 0) + 1; return acc; }, {});
 
     if (localRole === 'Tech Expert') {
         const info = document.createElement('p');
         info.className = 'muted';
-        info.innerHTML = '<b>คู่มือด่าน 3: การปลดชนวนแบบแมนนวล</b>';
-        
-        const manualContainer = document.createElement('div');
-        manualContainer.className = 'manual-list';
-        manualContainer.innerHTML = `
-            <p><b>1. ตารางตั้งค่าสวิตช์:</b></p>
-            <ul>${puzzleData.manual.switchRules.map(rule => `<li>${rule}</li>`).join('')}</ul>
-            <p><b>2. สูตรคำนวณแรงดัน:</b></p>
-            <ul>${puzzleData.manual.pressureFormulas.map(rule => `<li>${rule}</li>`).join('')}</ul>
-            <p><b>3. ตารางรหัสยืนยัน:</b></p>
-            <ul>${puzzleData.manual.codeRules.map(rule => `<li>${rule}</li>`).join('')}</ul>
-        `;
-        gameArea.append(info, manualContainer);
+        info.innerHTML = '<b>คู่มือด่าน 3: การปลดชนวน</b><br>ใช้ข้อมูลนี้เพื่อหาค่าที่ถูกต้องสำหรับแผงควบคุม';
+        const manualList = document.createElement('ul');
+        manualList.className = 'manual-list';
+
+        // Switch Rule
+        const switchLi = document.createElement('li');
+        if (stage3.rules.switchRuleType === 'ledColor') {
+            switchLi.innerHTML = `ถ้าหลอดไฟเป็นสี <b>${stage3.display.ledColor.toUpperCase()}</b>: เปิดเฉพาะสวิตช์ <b>${stage3.solution.correctSwitches.join(' และ ')}</b>`;
+        } else if (stage3.rules.switchRuleType === 'wireCount') {
+            switchLi.innerHTML = `ถ้ามีสายไฟสี <b>แดง</b> มากกว่า 1 เส้น: เปิดเฉพาะสวิตช์ <b>${stage3.solution.correctSwitches.join(' และ ')}</b>`;
+        } else { // roomId
+            switchLi.innerHTML = `ถ้ารหัสภารกิจมีตัวเลข: เปิดเฉพาะสวิตช์ <b>${stage3.solution.correctSwitches.join(' และ ')}</b>`;
+        }
+        manualList.appendChild(switchLi);
+
+        // Lever Rules
+        const leverLiFe = document.createElement('li');
+        if (stage3.rules.leverRuleFeType === 'constant') {
+            leverLiFe.innerHTML = `ระดับของ <b>${stage3.display.leverLabels[0]}</b> = 3`;
+        } else {
+            leverLiFe.innerHTML = `ระดับของ <b>${stage3.display.leverLabels[0]}</b> = จำนวนสายไฟสี <b>น้ำเงิน</b> ในด่าน 1 + 1`;
+        }
+        manualList.appendChild(leverLiFe);
+
+        const leverLiCu = document.createElement('li');
+        if (stage3.rules.leverRuleCuType === 'roomId') {
+            leverLiCu.innerHTML = `ระดับของ <b>${stage3.display.leverLabels[1]}</b> = ถ้ารหัสภารกิจมีตัวเลข ให้เป็น 5, มิเช่นนั้นเป็น 2`;
+        } else {
+            leverLiCu.innerHTML = `ระดับของ <b>${stage3.display.leverLabels[1]}</b> = จำนวนสัญลักษณ์ที่ไม่ซ้ำกันในด่าน 1`;
+        }
+        manualList.appendChild(leverLiCu);
+
+        const leverLiAu = document.createElement('li');
+        if (stage3.rules.leverRuleAuType === 'wireColor') {
+            leverLiAu.innerHTML = `ระดับของ <b>${stage3.display.leverLabels[2]}</b> = จำนวนสายไฟสี <b>เหลือง</b> ในด่าน 1 + 1`;
+        } else {
+            leverLiAu.innerHTML = `ระดับของ <b>${stage3.display.leverLabels[2]}</b> = ลำดับของสีของสายไฟเส้นสุดท้ายในด่าน 1 (นับจาก 1-8)`;
+        }
+        manualList.appendChild(leverLiAu);
+
+        // Confirm Code Rule
+        const confirmLi = document.createElement('li');
+        if (stage3.rules.confirmCodeRuleType === 'sum') {
+            confirmLi.innerHTML = `<b>รหัสยืนยัน</b> คือ <b>ผลรวม</b> ของระดับคันโยกทั้งสาม (เอาแค่ 2 ตัวท้าย)`;
+        } else if (stage3.rules.confirmCodeRuleType === 'difference') {
+            confirmLi.innerHTML = `<b>รหัสยืนยัน</b> คือ <b>ผลต่าง</b> ระหว่างค่าคันโยกที่มากที่สุดและน้อยที่สุด`;
+        } else if (stage3.rules.confirmCodeRuleType === 'product') {
+            confirmLi.innerHTML = `<b>รหัสยืนยัน</b> คือ <b>ผลคูณ</b> ของคันโยก <b>${stage3.display.leverLabels[0]}</b> และ <b>${stage3.display.leverLabels[2]}</b> (เอาแค่ 2 ตัวท้าย)`;
+        } else { // concat
+            confirmLi.innerHTML = `<b>รหัสยืนยัน</b> คือ <b>เลข 2 ตัวท้าย</b> ของค่าคันโยกทั้งหมดมาต่อกัน`;
+        }
+        manualList.appendChild(confirmLi);
+
+        gameArea.append(info, manualList);
 
     } else { // Field Agent
-        const info = document.createElement('p');
-        info.className = 'muted';
-        info.textContent = 'ตั้งค่าแผงควบคุมตามคำสั่งของผู้เชี่ยวชาญ';
-        
         const panel = document.createElement('div');
         panel.className = 'detonator-panel';
-
-        const switchBox = document.createElement('div');
-        switchBox.className = 'detonator-section';
-        switchBox.innerHTML = `<label>แผงสวิตช์จ่ายไฟ (สถานะ: <span class="led-light ${puzzleData.ledColor}">${puzzleData.ledColor.toUpperCase()}</span>)</label>`;
-        const switchGrid = document.createElement('div');
-        switchGrid.className = 'switch-grid';
-        puzzleData.switchLabels.forEach((label, index) => {
-            const switchEl = document.createElement('div');
-            switchEl.className = 'switch-container';
-            switchEl.innerHTML = `
-                <label class="switch">
-                    <input type="checkbox" id="switch-${index}">
-                    <span class="slider"></span>
-                </label>
-                <span>${label}</span>`;
-            switchGrid.appendChild(switchEl);
-        });
-        switchBox.appendChild(switchGrid);
-
-        const leverBox = document.createElement('div');
-        leverBox.className = 'detonator-section';
-        leverBox.innerHTML = `<label>คันโยกปรับแรงดัน</label>`;
-        const leverGrid = document.createElement('div');
-        leverGrid.className = 'lever-grid';
-        puzzleData.leverLabels.forEach((label, index) => {
-            const leverEl = document.createElement('div');
-            leverEl.className = 'lever-container';
-            leverEl.innerHTML = `
-                <label for="lever-${index}">${label}</label>
-                <input type="range" id="lever-${index}" min="1" max="5" value="1">
-                <span id="lever-value-${index}">1</span>`;
-            leverGrid.appendChild(leverEl);
-            leverEl.querySelector('input').addEventListener('input', (e) => {
-                document.getElementById(`lever-value-${index}`).textContent = e.target.value;
-            });
-        });
-        leverBox.appendChild(leverGrid);
-
-        const confirmBox = document.createElement('div');
-        confirmBox.className = 'detonator-section';
-        confirmBox.innerHTML = `
-            <label for="confirm-code">รหัสยืนยัน (2 หลัก)</label>
-            <input type="text" id="confirm-code" maxlength="2" placeholder="00">
-            <button id="arm-disarm-btn">ARM/DISARM</button>
+        panel.innerHTML = `
+            <p class="muted">ตั้งค่าแผงควบคุมตามคำสั่งของผู้เชี่ยวชาญ</p>
+            <div class="detonator-section">
+                <label>แผงสวิตช์จ่ายไฟ (สถานะ: <span class="led-light ${stage3.display.ledColor}">${stage3.display.ledColor.toUpperCase()}</span>)</label>
+                <div class="switch-grid">
+                    ${stage3.display.switchLabels.map(label => `
+                        <div class="switch-container">
+                            <label class="switch">
+                                <input type="checkbox" data-switch-id="${label}">
+                                <span class="slider"></span>
+                            </label>
+                            <span>${label}</span>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+            <div class="detonator-section">
+                <label>คันโยกปรับแรงดัน</label>
+                <div class="lever-grid">
+                    ${stage3.display.leverLabels.map(label => `
+                        <div class="lever-container">
+                            <label>${label}</label>
+                            <input type="range" min="1" max="8" value="1" data-lever-id="${label}">
+                            <span id="lever-val-${label}">1</span>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+            <div class="detonator-section">
+                <label>รหัสยืนยัน (2 หลัก)</label>
+                <input id="confirm-code" type="text" maxlength="2" placeholder="00">
+            </div>
+            <button id="arm-disarm-btn">ARM & DISARM</button>
         `;
-        confirmBox.querySelector('#arm-disarm-btn').addEventListener('click', handleDetonatorConfirm);
+        gameArea.appendChild(panel);
 
-        panel.append(switchBox, leverBox, confirmBox);
-        gameArea.append(info, panel);
-    }
-}
-
-async function handleDetonatorConfirm() {
-    const roomRef = doc(db, 'rooms', currentRoomId);
-    const snap = await getDoc(roomRef);
-    const data = snap.data();
-    if (data.status !== 'playing') return;
-
-    const playerSwitches = [
-        document.getElementById('switch-0').checked,
-        document.getElementById('switch-1').checked,
-        document.getElementById('switch-2').checked,
-        document.getElementById('switch-3').checked,
-    ];
-    const playerLevers = [
-        parseInt(document.getElementById('lever-0').value),
-        parseInt(document.getElementById('lever-1').value),
-        parseInt(document.getElementById('lever-2').value),
-    ];
-    const playerCode = parseInt(document.getElementById('confirm-code').value);
-
-    const solution = data.state.puzzle.stage3.solution;
-
-    const isSwitchesCorrect = JSON.stringify(playerSwitches) === JSON.stringify(solution.switches);
-    const isLeversCorrect = JSON.stringify(playerLevers.sort()) === JSON.stringify(solution.levers.sort());
-    const isCodeCorrect = playerCode === solution.code;
-
-    if (isSwitchesCorrect && isLeversCorrect && isCodeCorrect) {
-        await updateDoc(roomRef, { 'state.currentStage': 4 });
-    } else {
-        const newTime = Math.max(0, data.state.timeLeft - 45);
-        const newStrikes = (data.state.strikes || 0) + 1;
-
-        if (newStrikes >= 3 || newTime <= 0) {
-            await updateDoc(roomRef, { status: 'finished', 'state.defused': false, 'state.strikes': newStrikes, 'state.timeLeft': newTime });
-        } else {
-            const newStage3Puzzle = generateStage3Puzzle(currentRoomId, data.state.puzzle.stage1);
-            await updateDoc(roomRef, {
-                'state.strikes': newStrikes,
-                'state.timeLeft': newTime,
-                'state.puzzle.stage3': newStage3Puzzle
+        // Event Listeners
+        panel.querySelectorAll('input[type="range"]').forEach(input => {
+            input.addEventListener('input', (e) => {
+                document.getElementById(`lever-val-${e.target.dataset.leverId}`).textContent = e.target.value;
             });
-            renderedStage = 0;
-        }
+        });
+
+        document.getElementById('arm-disarm-btn').addEventListener('click', async () => {
+            const userSwitches = Array.from(panel.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.dataset.switchId);
+            const userLevers = {
+                'Fe': parseInt(panel.querySelector(`input[data-lever-id="Fe"]`).value),
+                'Cu': parseInt(panel.querySelector(`input[data-lever-id="Cu"]`).value),
+                'Au': parseInt(panel.querySelector(`input[data-lever-id="Au"]`).value),
+            };
+            const userCode = parseInt(document.getElementById('confirm-code').value || -1);
+
+            const solution = stage3.solution;
+            const isSwitchCorrect = userSwitches.length === solution.correctSwitches.length && userSwitches.every(s => solution.correctSwitches.includes(s));
+            const isLeverCorrect = userLevers.Fe === solution.correctLeverValues.Fe && userLevers.Cu === solution.correctLeverValues.Cu && userLevers.Au === solution.correctLeverValues.Au;
+            const isCodeCorrect = userCode === solution.confirmCode;
+
+            if (isSwitchCorrect && isLeverCorrect && isCodeCorrect) {
+                await updateDoc(doc(db, 'rooms', currentRoomId), { 'state.currentStage': 4 });
+            } else {
+                await applyStrike(30);
+            }
+        });
     }
 }
-
 
 // --- STAGE 4: LOGIC GRID ---
 function renderStage4(roomData) {
@@ -857,6 +897,7 @@ function renderStage4(roomData) {
     const rule1 = document.createElement('div');
     rule1.innerHTML = '<b>กฎข้อที่ 1: การแมปสี</b>';
     const mapList = document.createElement('ul');
+    mapList.className = 'manual-list';
     for (const [seen, pressed] of Object.entries(puzzleState.colorMap)) {
         const li = document.createElement('li');
         li.innerHTML = `ถ้าเห็น <span style="color:${seen}; font-weight:bold;">${seen.toUpperCase()}</span>, ให้กด <span style="color:${pressed}; font-weight:bold;">${pressed.toUpperCase()}</span>`;
@@ -869,11 +910,11 @@ function renderStage4(roomData) {
   } else { // Field Agent
     const info = document.createElement('p');
     info.className = 'muted';
-    info.textContent = 'จดจำลำดับการกระพริบ แล้วรายงานให้ผู้เชี่ยวชาญทราบ!';
+    info.textContent = 'จดจำลำดับการกระพริบ แล้วกดตามที่ผู้เชี่ยวชาญสั่ง!';
     const gridContainer = document.createElement('div');
     gridContainer.className = 'logic-grid-container';
     const buttons = {};
-    ['red', 'blue', 'green', 'yellow'].forEach(color => {
+    ALL_COLORS.forEach(color => {
         const btn = document.createElement('button');
         btn.className = `logic-btn ${color}`;
         btn.dataset.color = color;
@@ -882,11 +923,16 @@ function renderStage4(roomData) {
         buttons[color] = btn;
     });
     gameArea.append(info, gridContainer);
+    
+    // Disable buttons until flash sequence is over
+    gridContainer.style.pointerEvents = 'none';
+    
     setTimeout(() => {
         let i = 0;
         const interval = setInterval(() => {
             if (i >= puzzleState.flashSequence.length) {
                 clearInterval(interval);
+                gridContainer.style.pointerEvents = 'auto'; // Enable buttons
                 return;
             }
             const colorToFlash = puzzleState.flashSequence[i];
@@ -899,7 +945,7 @@ function renderStage4(roomData) {
                 }, 400);
             }
             i++;
-        }, 600);
+        }, 700);
     }, 1500);
   }
 }
@@ -925,19 +971,8 @@ async function handleLogicGridPress(color) {
             await updateDoc(roomRef, { 'state.logicGrid_playerPresses': newPresses });
         }
     } else {
-        const newTime = Math.max(0, state.timeLeft - 45);
-        const newStrikes = (state.strikes || 0) + 1;
-        if (newStrikes >= 3 || newTime <= 0) {
-             await updateDoc(roomRef, { status: 'finished', 'state.defused': false, 'state.strikes': newStrikes, 'state.timeLeft': newTime });
-        } else {
-            const newFlashSequence = Array(5).fill(0).map(() => ['red', 'blue', 'green', 'yellow'][Math.floor(Math.random() * 4)]);
-            await updateDoc(roomRef, {
-                'state.timeLeft': newTime,
-                'state.strikes': newStrikes,
-                'state.logicGrid_playerPresses': [],
-                'state.puzzle.stage4.flashSequence': newFlashSequence
-            });
-            renderedStage = 0; 
-        }
+        await applyStrike(45);
+        // Reset this stage by clearing presses
+        await updateDoc(roomRef, { 'state.logicGrid_playerPresses': [] });
     }
 }

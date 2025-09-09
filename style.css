@@ -1,5 +1,5 @@
 /* =================================================================
-// Defuse Duo - style.css (Complete & Final Version)
+// Defuse Duo - style.css (GRAND OVERHAUL VERSION)
 // ================================================================= */
 
 :root{
@@ -9,6 +9,8 @@
   --muted: #94a3b8; /* Muted Slate */
   --accent: #38bdf8; /* Sky Blue */
   --danger: #f43f5e; /* Rose Red */
+  --danger-text: #fda4af;
+  --success: #4ade80; /* Green */
 }
 
 *{box-sizing:border-box}
@@ -22,7 +24,7 @@ html,body{
 }
 
 #app{
-  max-width: 500px; /* Optimized for mobile-first view */
+  max-width: 500px;
   margin:0 auto;
   padding:12px;
 }
@@ -30,6 +32,7 @@ html,body{
 header{
   margin-bottom:12px;
   text-align: center;
+  transition: all 0.3s ease-in-out;
 }
 
 h1{
@@ -58,7 +61,7 @@ label{
   margin-bottom:6px;
 }
 
-input[type="text"], input, select{
+input, select{
   width:100%;
   padding:12px;
   border-radius:8px;
@@ -82,16 +85,18 @@ button{
   transition: background-color 0.2s, transform 0.1s;
 }
 button:hover {
-  background: #a5f3fc; /* Lighter accent */
+  background: #a5f3fc;
 }
 button:active {
   transform: scale(0.97);
 }
 button:disabled {
-  background: #374151; /* Gray */
+  background: #374151;
   color: #9ca3af;
   cursor: not-allowed;
 }
+.btn-danger { background-color: var(--danger); color: white; }
+.btn-danger:hover { background-color: #f87171; }
 
 .row{display:flex;gap:8px;margin-top:10px}
 .row button{flex:1}
@@ -99,42 +104,72 @@ button:disabled {
 #playersList{margin:6px 0 0;padding-left:18px}
 
 /* --- Game Area Specific --- */
+#game {
+  /* No longer needs position: relative */
+}
+#timerText {
+  /* Removed absolute positioning */
+  width: fit-content; /* ให้ความกว้างพอดีกับเนื้อหา */
+  margin: 0 auto 16px auto; /* จัดกลางแนวนอน และเว้นระยะห่างด้านล่าง */
+  background: #000;
+  color: var(--danger-text);
+  padding: 4px 16px; /* เพิ่ม padding แนวนอนเล็กน้อย */
+  border-radius: 8px;
+  border: 2px solid #40151d;
+  text-align: center;
+  font-weight: bold;
+}
+#timerText .digits {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 24px;
+  letter-spacing: 2px;
+}
+.timer-critical .digits { animation: pulse 1s infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+
 #gameArea{
-  min-height:260px;
+  min-height:300px;
   display:flex;
   flex-direction:column;
-  align-items: center; /* Center align all puzzle content */
+  align-items: center;
   gap:16px;
   padding: 10px 0;
   width: 100%;
 }
-#timerText{font-weight:700; font-size: 18px;}
-.timer-critical { color: var(--danger); animation: pulse 1s infinite; }
-@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+#gameFooter{margin-top:12px;display:flex;justify-content:center;align-items:center;gap:10px}
 
-.hint{color:#c7ffd8}
-#gameFooter{margin-top:12px;display:flex;justify-content:space-between;align-items:center;gap:10px}
-
-/* --- Stage Indicator --- */
+/* --- Game Top Bar (Indicators) --- */
+.game-top-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding: 0 10px;
+}
 .stage-indicator {
   display: flex;
-  justify-content: center;
-  gap: 12px;
-  margin-bottom: 16px;
+  gap: 10px;
 }
 .stage-dot {
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  background-color: #374151; /* Inactive */
-  transition: background-color 0.3s;
+  background-color: #374151;
+  transition: all 0.3s;
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.5);
 }
 .stage-dot.completed {
-  background-color: #4ade80; /* Green */
+  background-color: var(--success);
+  box-shadow: 0 0 8px var(--success);
 }
 .stage-dot.active {
   background-color: var(--accent);
   transform: scale(1.2);
+  box-shadow: 0 0 10px var(--accent);
+}
+.strike-indicator {
+  color: var(--danger-text);
+  font-weight: bold;
 }
 
 /* --- Manuals (Tech Expert) --- */
@@ -153,128 +188,108 @@ button:disabled {
   padding-left: 10px;
 }
 
-/* --- Stage 1: Wires --- */
+/* --- Stage 1: Wires (6-wire layout) --- */
 .wire-container {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
   width: 100%;
-  max-width: 300px;
+  max-width: 320px;
 }
 .wire {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 12px;
-  background: #1f2937;
+  background: #273345;
   border-radius: 8px;
   cursor: pointer;
   border: 2px solid transparent;
-  transition: border-color 0.2s, background-color 0.2s;
+  transition: all 0.2s;
+  position: relative;
+  overflow: hidden;
 }
 .wire:hover {
   border-color: var(--accent);
+  transform: scale(1.02);
+}
+.wire.cut {
+  animation: cut-anim 1s forwards;
+}
+.wire.cut .wire-color-indicator {
+  animation: spark-anim 1s forwards;
+}
+@keyframes cut-anim {
+  0% { transform: scale(1); }
+  20% { transform: scale(1.05); background-color: #475569; }
+  100% { transform: scale(0.9); opacity: 0.3; }
+}
+@keyframes spark-anim {
+  0% { box-shadow: 0 0 0 #fff; }
+  20% { box-shadow: 0 0 20px 10px #fff, 0 0 30px 15px #ffdd00; }
+  100% { box-shadow: 0 0 0 #fff; }
 }
 .wire span { font-size: 24px; }
 .wire-color-indicator {
-  width: 50px;
-  height: 20px;
+  width: 60px;
+  height: 24px;
   border-radius: 4px;
   border: 1px solid rgba(0,0,0,0.2);
 }
-.wire-color-red { background-color: #ef4444; }
+.wire-color-red { background-color: #a90000; }
 .wire-color-blue { background-color: #3b82f6; }
 .wire-color-yellow { background-color: #eab308; }
+.wire-color-green { background-color: #22c55e; }
+.wire-color-orange { background-color: #f97316; }
+.wire-color-purple { background-color: #a855f7; }
+.wire-color-white { background-color: #f8fafc; }
+.wire-color-pink { background-color: #ec4899; }
 
 /* --- Stage 2: Reactor --- */
-.reactor-display-container {
-  display: flex;
-  gap: 10px;
-  justify-content: center;
-  width: 100%;
-}
-.reactor-display {
-  background: #000;
-  border: 2px solid #4b5563;
-  border-radius: 8px;
-  padding: 10px 20px;
-  text-align: center;
-  width: 80px;
-}
+.reactor-display-container { display: flex; gap: 10px; justify-content: center; width: 100%; }
+.reactor-display { background: #000; border: 2px solid #4b5563; border-radius: 8px; padding: 10px 20px; text-align: center; width: 80px; }
 .reactor-display span { color: var(--muted); font-size: 14px; }
-.reactor-display strong { display: block; font-size: 28px; color: #4ade80; font-family: 'Courier New', Courier, monospace; }
-.reactor-controls {
-  display: flex;
-  gap: 10px;
-  justify-content: center;
-}
-.reactor-controls button {
-  min-width: 60px;
-}
-#confirmCalibrationBtn {
-  background-color: #16a34a; /* Green for SET */
-}
-#confirmCalibrationBtn:disabled {
-  background-color: #374151;
-}
+.reactor-display strong { display: block; font-size: 28px; color: var(--success); font-family: 'Courier New', Courier, monospace; }
+.reactor-controls { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+.reactor-controls button { min-width: 60px; }
+#confirmCalibrationBtn { background-color: #16a34a; }
+#confirmCalibrationBtn:disabled { background-color: #374151; }
 
-/* --- Stage 3: Identity Verification --- */
-.suspect-container {
-  display: flex;
-  flex-direction: column;
+/* --- Stage 3: Detonator Panel --- */
+.detonator-panel { display: flex; flex-direction: column; gap: 20px; width: 100%; max-width: 380px; }
+.detonator-section { background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px; }
+.detonator-section > label { font-weight: bold; margin-bottom: 12px; }
+.led-light { padding: 2px 6px; border-radius: 4px; color: white; font-weight: bold; text-shadow: 0 0 5px currentColor; }
+.led-light.red { background-color: ##a90000; }
+.led-light.green { background-color: #22c55e; }
+.led-light.blue { background-color: #3b82f6; }
+.led-light.off { background-color: #4b5563; color: #9ca3af; text-shadow: none; }
+.switch-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+.switch-container { display: flex; align-items: center; gap: 10px; background: #1e293b; padding: 8px; border-radius: 6px; }
+.switch-container > span { font-size: 18px; font-weight: bold; }
+.switch { position: relative; display: inline-block; width: 50px; height: 28px; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #4b5563; transition: .4s; border-radius: 28px; }
+.slider:before { position: absolute; content: ""; height: 20px; width: 20px; left: 4px; bottom: 4px; background-color: white; transition: .4s; border-radius: 50%; }
+input:checked + .slider { background-color: var(--accent); }
+input:checked + .slider:before { transform: translateX(22px); }
+.lever-grid { display: flex; flex-direction: column; gap: 12px; }
+.lever-container { display: grid; grid-template-columns: 30px 1fr 30px; align-items: center; gap: 10px; }
+.lever-container > label { font-weight: bold; }
+.lever-container > span { text-align: center; font-weight: bold; color: var(--accent); }
+input[type="range"] { -webkit-appearance: none; width: 100%; height: 8px; background: #4b5563; border-radius: 5px; outline: none; }
+input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 20px; height: 20px; background: var(--text); border-radius: 50%; cursor: pointer; }
+#confirm-code { text-align: center; font-size: 20px; font-family: 'Courier New', Courier, monospace; letter-spacing: 4px; }
+#arm-disarm-btn { background-color: var(--danger); color: white; font-weight: bold; font-size: 16px; }
+#arm-disarm-btn:hover { background-color: #f87171; }
+
+/* --- Stage 4: Logic Grid (8-button layout) --- */
+.logic-grid-container {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
   gap: 12px;
   width: 100%;
   max-width: 350px;
-}
-.suspect-card {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-  padding: 12px;
-  background: #1f2937;
-  border-radius: 8px;
-  border: 2px solid transparent;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-.suspect-card:hover {
-  border-color: var(--accent);
-  transform: scale(1.02);
-}
-.suspect-card.selected {
-  border-color: #4ade80; /* Green */
-  background-color: #224b33;
-}
-.suspect-icon {
-  font-size: 40px;
-  background: #334155;
-  width: 60px;
-  height: 60px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-}
-.suspect-details {
-  flex-grow: 1;
-}
-.suspect-codename {
-  font-size: 18px;
-  font-weight: bold;
-  margin-bottom: 4px;
-}
-.suspect-info {
-  font-size: 14px;
-  color: var(--muted);
-}
-
-/* --- Stage 4: Logic Grid --- */
-.logic-grid-container {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 15px;
-  width: 100%;
-  max-width: 250px;
 }
 .logic-btn {
   width: 100%;
@@ -284,17 +299,28 @@ button:disabled {
   transition: transform 0.1s, box-shadow 0.2s;
   cursor: pointer;
 }
-.logic-btn.red { background-color: #ef4444; }
+.logic-btn.red { background-color: #a90000; }
 .logic-btn.blue { background-color: #3b82f6; }
-.logic-btn.green { background-color: #22c55e; }
 .logic-btn.yellow { background-color: #eab308; }
+.logic-btn.green { background-color: #22c55e; }
+.logic-btn.orange { background-color: #f97316; }
+.logic-btn.purple { background-color: #a855f7; }
+.logic-btn.white { background-color: #f8fafc; }
+.logic-btn.pink { background-color: #ec4899; }
 .logic-btn.flash {
   transform: scale(1.1);
   box-shadow: 0 0 25px #fff;
 }
 
-/* --- Responsive --- */
+/* --- Finish Screen --- */
+.finish-screen { text-align: center; }
+.finish-screen h3 { font-size: 24px; margin-bottom: 10px; }
+
+/* --- Responsive & Global --- */
 @media(min-width:700px){
   h1{font-size:28px}
   #gameArea{min-height:320px}
+}
+body.game-active #app > header {
+  display: none;
 }
